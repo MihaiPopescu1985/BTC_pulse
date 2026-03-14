@@ -1,0 +1,26 @@
+tasks:
+  build:
+    command: make
+    outputs:
+      - build/crawl
+
+  unit-test:
+    command: make unit-test
+    # inputs: TODO
+    outputs:
+      - build/test_blk_dat_parser
+      - build/test_block_common
+      - build/test_main
+
+  integration-test:
+    command: make integration-test
+    # inputs: TODO
+    # outputs: TODO
+
+  full-test:
+    command: make test
+    # inputs: TODO
+    # outputs: TODO
+
+  clean:
+    command: make clean

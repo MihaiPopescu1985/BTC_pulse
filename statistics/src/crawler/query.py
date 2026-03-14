@@ -543,15 +543,16 @@ def export_data():
     copyfile(features_file_path, data_location / "features.json")
     copyfile(onchain_features_file_path, data_location / "onchain_features.json")
 
-def publish_changes():
-    # Commit and push the changes
-    os.chdir('/home/mihai/Documents/BTC_pulse/frontend')
+# Deprecated
+# def publish_changes():
+#     # Commit and push the changes
+#     os.chdir('/home/mihai/Documents/BTC_pulse/frontend')
 
-    subprocess.run(["git", "add", "_data/*"])
-    subprocess.run(["git", "commit", "-m", "Automated commit"])
-    subprocess.run(["git", "push", "origin", "main"])
+#     subprocess.run(["git", "add", "_data/*"])
+#     subprocess.run(["git", "commit", "-m", "Automated commit"])
+#     subprocess.run(["git", "push", "origin", "main"])
 
 if __name__ == "__main__":
     prepare_data()
     export_data()
-    publish_changes()
+    # publish_changes()

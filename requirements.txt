@@ -2,3 +2,4 @@ repomix
 pandas
 joblib
 scikit-learn
+matplotlib

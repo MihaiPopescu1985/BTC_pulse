@@ -371,6 +371,7 @@ def write_html_report(
     price_col: str,
     horizons: Sequence[int],
     chart_top_n: int = 30,
+    match_extra_points: int = 3,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -517,11 +518,15 @@ def write_html_report(
         for _, row in top.iterrows():
             s = int(row["cand_start_index"])
             e = int(row["cand_end_index"])
-            match_close = df.iloc[s:e + 1][price_col].to_numpy(dtype=float)
+
+            e_ext = min(len(df) - 1, e + match_extra_points)
+            match_close = df.iloc[s:e_ext + 1][price_col].to_numpy(dtype=float)
+
             title = (
                 f"sim={float(row['similarity']):.3f} dist={float(row['distance']):.3f} gap_days={int(row['time_gap_days'])} "
-                f"({row['start_ts']} → {row['end_ts']})"
+                f"({row['start_ts']} → {row['end_ts']}, +{e_ext - e} extra)"
             )
+
             b64 = _plot_overlay_png_base64(query_close, match_close, title=title)
             html.append("<div class='card' style='margin-top:12px;'>")
             html.append(f"<div class='small'>{title}</div>")

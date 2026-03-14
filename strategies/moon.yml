@@ -1,0 +1,41 @@
+tasks:
+  run:
+    script: |
+      # Clean the console
+      echo "Press ENTER to continue."
+      read
+
+      # Get the start date
+      while true; do
+          read -r -p "Enter start date (yyyy-MM-DD): " start
+          [[ $start =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          echo "Only digits allowed."
+      done
+
+      # Get the stop date
+      while true; do
+          read -r -p "Enter end date (yyyy-MM-DD): " end
+          [[ $end =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          echo "Only digits allowed."
+      done
+
+      source ../.venv/bin/activate
+
+      python candles_btc_features.py \
+        --input ../frontend/_data/daily_price.json \
+        --output out.csv
+
+      python candlestick_research_tool_v4.py \
+        --input out.csv \
+        --key-col timestamp \
+        --start $start \
+        --end $end \
+        --standardize \
+        --metric euclidean \
+        --min-sim 0.50 \
+        --out-dir research_out_v4
+
+      firefox research_out_v4/report.html
+    options:
+      interactive: true
+      cache: false

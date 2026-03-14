@@ -1,0 +1,10 @@
+tasks:
+  setup:
+    script: |
+      apt-get install ruby-full build-essential
+      gem install jekyll bundler
+
+      bundle install
+    
+  run:
+    command: bundle exec jekyll serve

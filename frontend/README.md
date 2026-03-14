@@ -55,3 +55,13 @@ layout: null
 - Keep chart-specific logic in the chart file.
 - Keep shared helpers in `assets/scripts/chart-utils.js`.
 - `dashboard.js` should remain generic (no chart-specific logic).
+
+## Build & Run
+```
+# https://jekyllrb.com/docs/installation/
+apt-get install ruby-full build-essential
+gem install jekyll bundler
+
+bundle install
+bundle exec jekyll serve
+```

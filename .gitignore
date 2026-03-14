@@ -2,6 +2,9 @@
 .vscode
 *.code-workspace
 .venv
+**/__pycache__
+**/*.pyc
+**/*/.idea
 ## moon
 .moon/cache
 .moon/docker
@@ -15,9 +18,6 @@ crawler/src/*
 crawler/!src/*.c
 crawler/!src/*.h
 crawler/!script/build
-crawler/*.pyc
-crawler/__pycache__
-crawler/script/query/.idea
 
 # echarts-ui
 ## Dependencies
@@ -43,7 +43,6 @@ echarts-ui/!.env.example
 ## IDE / OS files
 echarts-ui/.DS_Store
 echarts-ui/Thumbs.db
-echarts-ui/.idea/
 echarts-ui/.vscode/
 ## Optional local overrides
 echarts-ui/*.local
@@ -60,6 +59,8 @@ frontend/vendor
 # statistics
 statistics/out
 statistics/daily_reading.txt
+statistics/data
+statistics/models
 
 # strategies
 strategies/research_out*
