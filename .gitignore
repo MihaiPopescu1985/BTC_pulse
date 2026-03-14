@@ -1,6 +1,10 @@
 # workspace
 .vscode
 *.code-workspace
+.venv
+## moon
+.moon/cache
+.moon/docker
 
 # crawler
 crawler/build
