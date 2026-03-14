@@ -1,0 +1,62 @@
+# workspace
+.vscode
+*.code-workspace
+
+# crawler
+crawler/build
+crawler/db
+crawler/etc
+crawler/.vscode
+crawler/src/*
+crawler/!src/*.c
+crawler/!src/*.h
+crawler/!script/build
+crawler/*.pyc
+crawler/__pycache__
+crawler/script/query/.idea
+
+# echarts-ui
+## Dependencies
+echarts-ui/node_modules/
+## Build outputs
+echarts-ui/dist/
+echarts-ui/build/
+echarts-ui/.vite/
+## TypeScript incremental build info
+echarts-ui/*.tsbuildinfo
+## Logs
+echarts-ui/npm-debug.log*
+echarts-ui/yarn-debug.log*
+echarts-ui/yarn-error.log*
+echarts-ui/pnpm-debug.log*
+echarts-ui/*.log
+## Test / coverage
+echarts-ui/coverage/
+## Environment files
+echarts-ui/.env
+echarts-ui/.env.*
+echarts-ui/!.env.example
+## IDE / OS files
+echarts-ui/.DS_Store
+echarts-ui/Thumbs.db
+echarts-ui/.idea/
+echarts-ui/.vscode/
+## Optional local overrides
+echarts-ui/*.local
+echarts-ui/.venv
+echarts-ui/repomix*
+
+# frontend
+frontend/_site
+frontend/.sass-cache
+frontend/.jekyll-cache
+frontend/.jekyll-metadata
+frontend/vendor
+
+# statistics
+statistics/out
+statistics/daily_reading.txt
+
+# strategies
+strategies/research_out*
+strategies/out.csv

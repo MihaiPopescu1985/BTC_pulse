@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+data_file="$root/_data/last_update.json"
+
+timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+mkdir -p "$(dirname "$data_file")"
+printf "{\n  \"iso\": \"%s\"\n}\n" "$timestamp" > "$data_file"
+
+git add "$data_file"

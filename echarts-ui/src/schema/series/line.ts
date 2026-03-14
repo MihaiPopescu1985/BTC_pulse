@@ -1,0 +1,66 @@
+import type { FieldSchema } from '../../types/editor';
+import { isLineSeries } from '../helpers/fieldBuilders';
+
+export const lineSeriesFields: FieldSchema[] = [
+  {
+    key: 'series.coordinateSystem.line',
+    label: 'Coordinate System',
+    path: 'series.$seriesIndex.coordinateSystem',
+    control: 'select',
+    defaultValue: 'cartesian2d',
+    visibleWhen: isLineSeries,
+    complexity: 'advanced',
+    helpText: 'Use cartesian2d for standard line charts or polar for radial lines.',
+    options: [
+      { label: 'Cartesian 2D', value: 'cartesian2d' },
+      { label: 'Polar', value: 'polar' },
+    ],
+  },
+  {
+    key: 'series.smooth',
+    label: 'Smooth',
+    path: 'series.$seriesIndex.smooth',
+    control: 'checkbox',
+    defaultValue: false,
+    visibleWhen: isLineSeries,
+    helpText: 'Render smooth curves instead of straight segments.',
+  },
+  {
+    key: 'series.step',
+    label: 'Step',
+    path: 'series.$seriesIndex.step',
+    control: 'checkbox',
+    defaultValue: false,
+    visibleWhen: isLineSeries,
+    helpText: 'Render as step line chart.',
+  },
+  {
+    key: 'series.symbol',
+    label: 'Symbol',
+    path: 'series.$seriesIndex.symbol',
+    control: 'select',
+    defaultValue: 'emptyCircle',
+    visibleWhen: isLineSeries,
+    helpText: 'Marker symbol used for data points.',
+    options: [
+      { label: 'Circle', value: 'circle' },
+      { label: 'Empty Circle', value: 'emptyCircle' },
+      { label: 'Rect', value: 'rect' },
+      { label: 'Round Rect', value: 'roundRect' },
+      { label: 'Triangle', value: 'triangle' },
+      { label: 'Diamond', value: 'diamond' },
+      { label: 'Pin', value: 'pin' },
+      { label: 'Arrow', value: 'arrow' },
+      { label: 'None', value: 'none' },
+    ],
+  },
+  {
+    key: 'series.symbolSize',
+    label: 'Symbol Size',
+    path: 'series.$seriesIndex.symbolSize',
+    control: 'number',
+    defaultValue: 8,
+    visibleWhen: isLineSeries,
+    helpText: 'Size of line point symbols.',
+  },
+];

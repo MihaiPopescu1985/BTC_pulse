@@ -1,0 +1,21 @@
+---
+layout: default
+---
+
+<div class="content-wrapper">
+  <article class="layout-main blog-post">
+    <header class="blog-post__header">
+      <h1>{{ page.title }}</h1>
+      <div class="blog-post__meta">{{ page.date | date: "%Y-%m-%d" }}{% if page.author %} • {{ page.author }}{% endif %}</div>
+      {% if page.description %}
+      <p class="blog-post__desc">{{ page.description }}</p>
+      {% endif %}
+    </header>
+    <div class="blog-post__content">
+      {{ content }}
+    </div>
+    <footer class="blog-post__footer">
+      <a href="{{ site.baseurl }}/blog/">Back to blog</a>
+    </footer>
+  </article>
+</div>

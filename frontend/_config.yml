@@ -1,0 +1,5 @@
+title: BTC Pulse
+baseurl: "/bitcoin-charts"
+url: "https://mihaipopescu1985.github.io"
+permalink: /blog/:year/:month/:day/:title/
+excerpt_separator: "<!--more-->"

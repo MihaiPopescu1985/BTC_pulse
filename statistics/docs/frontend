@@ -1,0 +1,11 @@
+# https://jekyllrb.com/docs/installation/
+apt-get install ruby-full build-essential
+gem install jekyll bundler
+
+cd charts
+bundle install
+bundle exec jekyll serve
+
+# jekyll new charts
+# cd charts
+# bundle install

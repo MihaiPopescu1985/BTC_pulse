@@ -1,0 +1,260 @@
+/* General flex layout */
+body {
+    display: flex; /* Enable flex layout on body */
+    flex-direction: column; /* Stack elements vertically */
+    min-height: 100vh; /* Fill the visible height */
+    margin: 0;
+    font-family: sans-serif;
+    background-color: #f4f4f4;
+}
+
+/* Main content container (Main + Aside, even if Aside is removed) */
+.content-wrapper {
+    display: flex;
+    flex-direction: row; /* Lay out the main section and controls horizontally */
+    flex-grow: 1; /* Let this container take the remaining space */
+}
+
+/* 1. Header Styles */
+.layout-header {
+    background: #1a1a1a;
+    color: #fff;
+    padding: 1rem;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+    /* Flex: no grow, no shrink, keep content size */
+}
+.layout-header .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.layout-header .brand {
+    display: flex;
+    align-items: center;
+}
+.layout-header .logo { height: 40px; margin-right: 15px; }
+.nav-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: row;
+    gap: 6px;
+    width: 44px;
+    height: 40px;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+}
+.nav-toggle__bar {
+    display: block;
+    width: 2px;
+    height: 18px;
+    border-radius: 1px;
+    background: #fff;
+}
+.nav-toggle:focus-visible {
+    outline: 2px solid #f7931a;
+    outline-offset: 2px;
+}
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+/* 2. Nav Styles */
+.layout-nav {
+    background: #fff;
+    border-bottom: 2px solid #ddd;
+    /* Flex: no grow, no shrink, keep content size */
+}
+.layout-nav ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex; /* Lay out buttons horizontally */
+}
+.nav-btn {
+    background: none;
+    border: none;
+    padding: 15px 20px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1rem;
+    white-space: nowrap; /* Prevent label wrapping */
+    color: inherit;
+    text-decoration: none;
+    display: inline-block;
+}
+.nav-btn:hover, .nav-btn.active {
+    background-color: #f7931a; /* Bitcoin orange */
+    color: white;
+}
+
+@media (max-width: 960px) {
+    .nav-toggle {
+        display: inline-flex;
+    }
+    .layout-nav {
+        border-bottom: none;
+        border-top: none;
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        pointer-events: none;
+        transition: max-height 0.25s ease, opacity 0.2s ease;
+    }
+    body.nav-open .layout-nav {
+        border-top: 2px solid #ddd;
+        max-height: 480px;
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .layout-nav ul {
+        flex-direction: column;
+        padding: 6px 0;
+    }
+    .layout-nav li {
+        border-top: 1px solid #eee;
+    }
+    .nav-btn {
+        width: 100%;
+        text-align: left;
+        padding: 12px 16px;
+        white-space: normal;
+    }
+}
+
+@media (max-width: 600px) {
+    .layout-nav ul {
+        padding: 4px 0;
+    }
+    .nav-btn {
+        font-size: 0.95rem;
+        padding: 11px 14px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .layout-nav {
+        transition: none;
+    }
+}
+
+/* 3. Section (Chart) Styles */
+.layout-main {
+    /* Fill available horizontal space inside content-wrapper */
+    flex-grow: 1; 
+    background: #fff;
+    padding: 20px;
+    box-shadow: 0 0 5px rgba(0,0,0,0.1);
+}
+
+/* 4. Aside (Controls - removed from HTML, class kept for future) */
+.layout-controls {
+    /* If reintroduced, it can have a fixed width or take part of the space */
+    /* Example: width: 300px; */
+    padding: 20px;
+    background: #fff;
+    border-left: 1px solid #ddd;
+}
+
+/* 5. Footer Styles */
+.layout-footer {
+    text-align: center;
+    padding: 10px;
+    background: #e0e0e0;
+    font-size: 0.8rem;
+    margin-top: auto; /* Push the footer below all content */
+}
+
+/* Blog styles */
+.blog-index .blog-header {
+    margin-bottom: 20px;
+}
+.blog-index .blog-header h1 {
+    margin: 0 0 6px;
+}
+.blog-index .blog-header p {
+    margin: 0;
+    color: #555;
+}
+.blog-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 16px;
+}
+.blog-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    background: #fff;
+}
+.blog-card__title {
+    color: #111;
+    font-size: 1.1rem;
+    text-decoration: none;
+}
+.blog-card__title:hover {
+    text-decoration: underline;
+}
+.blog-card__meta {
+    font-size: 0.85rem;
+    color: #666;
+    margin: 6px 0 10px;
+}
+.blog-card__excerpt {
+    margin: 0;
+    color: #333;
+}
+.blog-post__header h1 {
+    margin-top: 0;
+}
+.blog-post__meta {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 6px 0 14px;
+}
+.blog-post__desc {
+    color: #444;
+    margin: 0 0 18px;
+}
+.blog-post__content {
+    line-height: 1.6;
+}
+.blog-post__content h2 {
+    margin-top: 1.6rem;
+}
+.blog-post__footer {
+    margin-top: 24px;
+}
+.blog-post__footer a {
+    color: #f7931a;
+    text-decoration: none;
+    font-weight: bold;
+}
+.blog-post__footer a:hover {
+    text-decoration: underline;
+}
+
+.layout-header .last-update {
+    font-size: 0.85rem;
+    color: #e6e6e6;
+    opacity: 0.85;
+}
+.layout-header .last-update time {
+    font-variant-numeric: tabular-nums;
+}

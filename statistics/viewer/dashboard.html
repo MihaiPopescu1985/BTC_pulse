@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="ro">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BTC – Dashboard (Regime / Hazard / Exposure)</title>
+  <style>
+    html,
+    body {
+      overflow-y: auto;
+
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #0b0e12;
+      color: #e8eefc;
+    }
+
+    #wrap {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    #desc {
+      flex: 0 0 auto;
+      max-width: 980px;
+      width: calc(100% - 24px);
+      margin: 10px auto 0;
+      color: #cbd5e1;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 10px 12px;
+      max-height: 190px;
+      /* important: nu “mănâncă” ecranul */
+      overflow: auto;
+      /* scroll intern dacă e mult text */
+    }
+
+    #chart {
+      width: 100%;
+      height: 90vh;
+      min-height: 680px;
+    }
+
+    code {
+      color: #ffd27a;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="wrap">
+
+    <h2 style="margin:10px 0 8px; font-size:14px; font-weight:700; color:#e5e7eb; letter-spacing:0.2px;">BTC — Regime /
+      Hazard / Exposure (SAFE + On-chain)</h2>
+    <div id="chart"></div>
+  </div>
+
+
+
+  <div style="margin: 14px 0 22px;">
+    <details id="desc" open>
+      <summary style="cursor:pointer; font-weight:700;">Reading / interpretare <span id="assetBadge"
+          style="display:inline-block; margin-left:10px; padding:2px 8px; border:1px solid rgba(255,255,255,0.18); border-radius:999px; font-size:12px; color:#a9b4cc;">BTC</span>
+      </summary>
+      <div style="margin-top:10px; line-height:1.5;">
+        <h3 style="margin: 6px 0 8px;">Indicatori și interpretare (SAFE + Scores + AGGR)</h3>
+        <p style="margin: 6px 0;">
+          <b>Regime (HMM_STATE_0..3)</b>:
+          indică starea dominantă a pieței (trend sau lateral). Ne interesează schimbările de regim și persistența, nu
+          fiecare fluctuație mică.
+        </p>
+
+        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.10); margin: 10px 0;" />
+
+        <p style="margin: 6px 0;">
+          <b>Hazard</b>:
+        </p>
+        <ul style="margin: 6px 0 10px 18px;">
+          <li><b>P_Corr_10D (correction probability in 10 days)</b> mare = risc crescut de corecție în ~10 zile → nu accelera acumularea.</li>
+          <li><b>P_Reb_10D (rebound probability in 10 days)</b> mare = șanse crescute de rebound → susține hold/accumulate dacă regimul nu e toxic.</li>
+        </ul>
+
+        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.10); margin: 10px 0;" />
+
+        <p style="margin: 6px 0;">
+          <b>E_target_safe (exposure target)</b> (0..1):
+          expunerea recomandată în modul SAFE (long-only). Este „baza” în piață. Ajustările sunt lente, pentru
+          stabilitate psihologică și disciplină.
+        </p>
+      </div>
+    <div style="opacity:0.9; font-size:13px; line-height:1.4; margin-top:8px;">
+  <b>On-chain (activity / structure)</b>
+  <ul>
+    <li><b>OC_amount_log</b>: log din volumul total on-chain (BTC transferați/zi). Proxy pentru “energia”/activitatea rețelei. Creșteri bruște apar frecvent în stres (panică) sau în capitulare/absorbție.</li>
+    <li><b>OC_vol_z</b>: z-score pentru volumul on-chain (normalizat la istoricul trecut).
+      <ul>
+        <li>valoare mare pozitivă → activitate neobișnuit de mare față de “normal”</li>
+        <li>aproape de 0 → activitate tipică perioadei</li>
+      </ul>
+    </li>
+    <li><b>OC_whale_share</b>: ponderea tranzacțiilor mari (“whale”) din total (0..1).
+      <ul>
+        <li>crește → jucătorii mari devin relativ mai activi</li>
+        <li>scade → activitatea e dominată de tranzacții mici (retail)</li>
+      </ul>
+    </li>
+    <li><b>OC_dom_z</b>: z-score pentru dominanța tranzacțiilor mari vs mici.
+      <ul>
+        <li>pozitiv mare → dominanță neobișnuită a tranzacțiilor mari</li>
+        <li>negativ → tranzacțiile mici domină raportat la istoricul perioadei</li>
+      </ul>
+    </li>
+    <li><i>Cum se citesc împreună cu SAFE</i>:
+      <ul>
+        <li>În perioade de <b>incertitudine</b> (P_Corr și P_Reb ambele mari), on-chain indică <i>cine</i> apasă piața (whales vs retail), chiar dacă direcția nu e clară.</li>
+        <li>În <b>UP stabil</b>, dacă OC_vol_z e moderat iar OC_whale_share / OC_dom_z rămân susținute, trendul este mai robust. Dacă volumul crește dar dominanța scade, trendul devine mai fragil (retail‑driven).</li>
+      </ul>
+    </li>
+  </ul>
+</div>
+</details>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script>
+    const chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
+    window.addEventListener('resize', () => chart.resize());
+
+    async function loadData() {
+      const params = new URLSearchParams(location.search);
+      const asset = (params.get('asset') || 'btc').toLowerCase();
+
+      const featuresPath = `../out/${asset}/features.json`;
+      const onchainPath = `../out/${asset}/onchain_features.json`;
+
+      const featuresRes = await fetch(featuresPath, { cache: 'no-store' });
+      if (!featuresRes.ok) throw new Error(`Failed to load JSON: ${featuresRes.status} ${featuresRes.statusText} (${featuresPath})`);
+
+      // onchain is optional (e.g. for non-BTC assets)
+      let onchainPayload = null;
+      try {
+        const onRes = await fetch(onchainPath, { cache: 'no-store' });
+        if (onRes.ok) onchainPayload = await onRes.json();
+      } catch (e) {
+        onchainPayload = null;
+      }
+
+      // price file: prefer asset-specific, fall back to legacy daily_price.json
+      let dailyPrice = null;
+      const priceCandidates = [
+        `../data/${asset}_daily_price.json`,
+        `../data/daily_price.json`
+      ];
+      for (const p of priceCandidates) {
+        try {
+          const r = await fetch(p, { cache: 'no-store' });
+          if (r.ok) { dailyPrice = await r.json(); break; }
+        } catch (e) { }
+      }
+      if (!dailyPrice) {
+        console.error(`Price JSON not found. Tried: ${priceCandidates.join(', ')}. Falling back to series.close.`);
+      }
+
+      return {
+        asset,
+        features: await featuresRes.json(),
+        onchain: onchainPayload,
+        dailyPrice
+      };
+    }
+
+    const area = (name, data, xAxisIndex, yAxisIndex, stackKey = 'states', color = null) => ({
+      name, type: 'line', data,
+      xAxisIndex, yAxisIndex,
+      stack: stackKey,
+      showSymbol: false,
+      smooth: true,
+      lineStyle: { width: 1.1, color: color || undefined },
+      areaStyle: { opacity: 0.28, color: color || undefined },
+      emphasis: { focus: 'series' }
+    });
+
+    const line = (name, data, xAxisIndex, yAxisIndex, smooth = true, width = 1.8) => ({
+      name, type: 'line', data,
+      xAxisIndex, yAxisIndex,
+      showSymbol: false,
+      smooth,
+      lineStyle: { width },
+      emphasis: { focus: 'series' }
+    });
+
+    function seriesOrFallback(s, key, fallbackKey = null) {
+      const a = s[key];
+      if (a && a.length) return a.map(v => v == null ? null : +v);
+      if (fallbackKey && s[fallbackKey] && s[fallbackKey].length) return s[fallbackKey].map(v => v == null ? null : +v);
+      // return array of nulls later (caller can handle)
+      return null;
+    }
+
+    function pickRegimeSeries(s) {
+      const get = (k, fallbackKey = null) => seriesOrFallback(s, k, fallbackKey);
+
+      return [
+        ["HMM_STATE_0", get("HMM_STATE_0", "P_R0_HMM")],
+        ["HMM_STATE_1", get("HMM_STATE_1", "P_R1_HMM")],
+        ["HMM_STATE_2", get("HMM_STATE_2", "P_R2_HMM")],
+        ["HMM_STATE_3", get("HMM_STATE_3", "P_R3_HMM")],
+      ];
+    }
+
+    function buildCandleSeries(dates, closeSeries, dailyPrice) {
+      const byDate = new Map();
+      (dailyPrice || []).forEach((row) => {
+        if (row && row.timestamp) byDate.set(row.timestamp, row);
+      });
+
+      return dates.map((d, i) => {
+        const close = closeSeries ? closeSeries[i] : null;
+        if (close == null || !isFinite(close)) return [null, null, null, null];
+        const row = byDate.get(d);
+        let open = close;
+        let low = close;
+        let high = close;
+        if (row) {
+          open = +row.open;
+          low = +row.low;
+          high = +row.high;
+        }
+        if (![open, close, low, high].every((v) => isFinite(v))) return [null, null, null, null];
+        return [open, close, low, high];
+      });
+    }
+
+    function buildOption(asset, featuresPayload, onchainPayload, dailyPrice, regimeMode) {
+      const dates = featuresPayload.dates;
+
+      // const n = dates.length;
+      const featuresSeries = featuresPayload.series;
+      const onChainSeries = (onchainPayload && onchainPayload.series) ? onchainPayload.series : {};
+
+      const regimeColors = {
+        HMM_STATE_0: "#38bdf8",
+        HMM_STATE_1: "#f59e0b",
+        HMM_STATE_2: "#10b981",
+        HMM_STATE_3: "#a78bfa"
+      };
+
+      const regimeKeys = ["HMM_STATE_0", "HMM_STATE_1", "HMM_STATE_2", "HMM_STATE_3"];
+
+      const regimes = pickRegimeSeries(featuresSeries);
+      const hmmLabelFallback = ["R0", "R1", "R2", "R3"];
+      const hmmStateLabels = (featuresPayload.meta && featuresPayload.meta.hmm
+        && Array.isArray(featuresPayload.meta.hmm.labels_by_state)
+        && featuresPayload.meta.hmm.labels_by_state.length === 4)
+        ? featuresPayload.meta.hmm.labels_by_state
+        : hmmLabelFallback;
+
+      const dateIndex = new Map(dates.map((d, i) => [d, i]));
+
+      const priceSeries = seriesOrFallback(featuresSeries, "close", "price");
+      const priceSeriesEnabled = priceSeries && priceSeries.length === dates.length;
+      if (!priceSeriesEnabled) {
+        const got = priceSeries ? priceSeries.length : "missing";
+        console.error(`Price series length mismatch. Expected ${dates.length}, got ${got}. Disabling price series.`);
+      }
+
+      const candles = priceSeriesEnabled ? buildCandleSeries(dates, priceSeries, dailyPrice) : [];
+
+      const pCorr = seriesOrFallback(featuresSeries, "P_CORRECTION_10D_CAL", "P_CORRECTION_10D") || [];
+      const pReb = seriesOrFallback(featuresSeries, "P_REBOUND_10D_CAL", "P_REBOUND_10D") || [];
+
+      const E_safe = seriesOrFallback(featuresSeries, "E_target_safe") || [];
+
+      // If some series are missing (null), replace with arrays of nulls for chart consistency
+      function ensure(arr) {
+        if (arr && arr.length) return arr;
+        return new Array(dates.length).fill(null);
+      }
+
+      const regSeries = regimes.map(([name, data]) => [name, ensure(data)]);
+
+      // --- On-chain series (date-aligned + smoothing) ---
+      const ocDates = (onchainPayload && onchainPayload.dates) ? onchainPayload.dates : [];
+      const ocIndex = new Map(ocDates.map((d, i) => [d, i]));
+
+      function ocAligned(key) {
+        const src = onChainSeries[key] || [];
+        return dates.map((d) => {
+          const idx = ocIndex.get(d);
+          if (idx == null) return null;
+          const v = src[idx];
+          return v == null ? null : +v;
+        });
+      }
+
+      const oc_amount_log = ocAligned('ONCHAIN_AMOUNT_LOG');
+      const oc_vol_z = ocAligned('ONCHAIN_VOL_Z');
+      const oc_whale_share = ocAligned('ONCHAIN_WHALE_SHARE');
+      const oc_dom_z = ocAligned('ONCHAIN_DOM_Z');
+
+      return {
+        backgroundColor: '#0b0e12',
+        animation: false,
+        title: [],
+
+        toolbox: { right: 12, top: 64, iconStyle: { borderColor: 'rgba(255,255,255,0.35)' }, feature: { dataZoom: { yAxisIndex: 'none' }, restore: {}, saveAsImage: {} } },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'cross' },
+          backgroundColor: 'rgba(17,20,28,0.92)',
+          borderColor: 'rgba(255,255,255,0.12)',
+          textStyle: { color: '#e8eefc' },
+          formatter: (params) => {
+            if (!params || !params.length) return '';
+            const date = params[0].axisValue;
+            const idx = dateIndex.get(date);
+            const domArr = featuresSeries["HMM_DOM"];
+            const confArr = featuresSeries["HMM_CONF"];
+            let dom = null;
+            let conf = null;
+            if (idx != null && domArr && domArr[idx] != null) {
+              const v = +domArr[idx];
+              dom = isFinite(v) ? Math.round(v) : null;
+            }
+            if (idx != null && confArr && confArr[idx] != null) {
+              const v = +confArr[idx];
+              conf = isFinite(v) ? v : null;
+            }
+            if (dom == null || conf == null) {
+              const probs = regimeKeys.map((k) => {
+                const arr = featuresSeries[k];
+                if (!arr || idx == null || arr[idx] == null) return 0;
+                const v = +arr[idx];
+                return isFinite(v) ? v : 0;
+              });
+              conf = Math.max(...probs);
+              dom = probs.indexOf(conf);
+            }
+            const domLabel = (dom != null && isFinite(dom))
+              ? (hmmStateLabels[dom] || `R${dom}`)
+              : 'UNKNOWN';
+            const domColor = regimeColors[`HMM_STATE_${dom}`] || '#94a3b8';
+
+            const lines = [];
+            lines.push(`<div style="font-weight:700; margin-bottom:4px;">${date}</div>`);
+            lines.push(`<div>Regime: <span style="color:${domColor}; font-weight:700;">${domLabel}</span></div>`);
+            lines.push(`<div>State id: ${(dom != null && isFinite(dom)) ? dom : '-'}</div>`);
+            lines.push(`<div>HMM_CONF: ${(conf != null && isFinite(conf)) ? conf.toFixed(3) : '-'}</div>`);
+            lines.push('<div style="margin:6px 0; height:1px; background:rgba(255,255,255,0.08);"></div>');
+
+            params.forEach((p) => {
+              if (!p || p.data == null || p.seriesName.startsWith('HMM_STATE_')) return;
+              const v = (typeof p.data === 'number' && isFinite(p.data)) ? p.data : null;
+              const val = v == null ? '-' : v.toFixed(4);
+              lines.push(`<div><span style="display:inline-block; margin-right:6px; width:8px; height:8px; border-radius:50%; background:${p.color};"></span>${p.seriesName}: ${val}</div>`);
+            });
+
+            return lines.join('');
+          }
+        },
+        axisPointer: { link: [{ xAxisIndex: 'all' }] },
+        legend: {
+          type: 'scroll', top: 36,
+          left: 12,
+          right: 12,
+          textStyle: { color: '#cbd5e1' },
+          itemWidth: 14,
+          itemHeight: 8,
+          pageIconColor: '#cbd5e1',
+          pageTextStyle: { color: '#a9b4cc' },
+          // Pornim cu un set "citibil" by default. Restul rămân în legendă, dar OFF.
+          selected: {
+            'Price': true,
+            'HMM_STATE_0': true,
+            'HMM_STATE_1': true,
+            'HMM_STATE_2': true,
+            'HMM_STATE_3': true,
+            'P_Corr_10D': true,
+            'P_Reb_10D': true,
+            'E_target_safe': true,
+            'OC_amount_log': true,
+            'OC_vol_z': true,
+            'OC_whale_share': true,
+            'OC_dom_z': true,
+          }
+        },
+        grid: [
+          // Layout lizibil + spațiu pentru slider jos (mai mult aer între panouri)
+          { left: 60, right: 70, top: '11%', height: '45%' },    // price (mare)
+          { left: 60, right: 70, top: '60%', height: '7%' },     // regimes (benzi)
+          { left: 60, right: 70, top: '69%', height: '7%' },     // hazard
+          { left: 60, right: 70, top: '78%', height: '7%' },     // exposure
+          { left: 60, right: 70, top: '87%', height: '7%' },     // onchain (all)
+        ],
+        xAxis: [
+          { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { color: '#a9b4cc', hideOverlap: true, margin: 10 } },
+          { type: 'category', data: dates, gridIndex: 1, boundaryGap: false, axisLabel: { show: false } },
+          { type: 'category', data: dates, gridIndex: 2, boundaryGap: false, axisLabel: { show: false } },
+          { type: 'category', data: dates, gridIndex: 3, boundaryGap: false, axisLabel: { show: false } },
+          { type: 'category', data: dates, gridIndex: 4, boundaryGap: false, axisLabel: { show: false } },
+        ],
+        yAxis: [
+          {
+            type: 'log', gridIndex: 0, scale: true, splitNumber: 6,
+            min: (val) => Math.max(1e-8, val.min * 0.98),
+            max: (val) => val.max * 1.02,
+            axisLabel: {
+              color: '#a9b4cc', formatter: (v) => {
+                const n = +v;
+                if (!isFinite(n) || n <= 0) return '';
+                if (n >= 1e6) return (n / 1e6).toFixed(0) + 'M';
+                if (n >= 1e3) return (n / 1e3).toFixed(0) + 'k';
+                return String(Math.round(n));
+              }
+            },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
+          }, // 0 price
+          { type: 'value', gridIndex: 1, min: 0, max: 1, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }, // 1 regimes
+          { type: 'value', gridIndex: 2, min: 0, max: 1, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }, // 2 hazard
+          { type: 'value', gridIndex: 3, min: 0, max: 1, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }, // 3 exposure
+          { type: 'value', gridIndex: 4, scale: true, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }, // 4 onchain amount_log
+          { type: 'value', gridIndex: 4, min: 0, max: 1, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { show: false } }, // 5 onchain whale_share
+          { type: 'value', gridIndex: 4, scale: true, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { show: false } }  // 6 onchain z-scores
+        ],
+        dataZoom: [
+          { type: 'inside', xAxisIndex: [0, 1, 2, 3, 4], filterMode: 'filter' },
+          { type: 'slider', xAxisIndex: [0, 1, 2, 3, 4], bottom: 10, height: 32, filterMode: 'filter' }
+        ],
+        series: [
+          // PRICE
+          {
+            name: 'Price',
+            type: 'candlestick',
+            xAxisIndex: 0,
+            yAxisIndex: 0,
+            data: priceSeriesEnabled ? candles : [],
+            show: priceSeriesEnabled,
+            itemStyle: {
+              color: '#22c55e',
+              color0: '#ef4444',
+              borderColor: '#22c55e',
+              borderColor0: '#ef4444'
+            }
+          },
+
+          // REGIMES (stacked)
+          ...regSeries.map(([name, data]) => area(name, data, 1, 1, 'regimes', regimeColors[name])),
+
+          // HAZARD
+          line('P_Corr_10D', ensure(pCorr), 2, 2, true, 1.7),
+          line('P_Reb_10D', ensure(pReb), 2, 2, true, 1.7),
+
+          // EXPOSURE (SAFE is 0..1, AGGR is -1..1)
+          line('E_target_safe', ensure(E_safe), 3, 3, true, 1.7),
+
+          line('OC_amount_log', oc_amount_log, 4, 4, true, 1.6),
+          line('OC_vol_z', oc_vol_z, 4, 6, true, 1.6),
+          line('OC_whale_share', oc_whale_share, 4, 5, true, 1.6),
+          line('OC_dom_z', oc_dom_z, 4, 6, true, 1.6),
+        ]
+      };
+    }
+
+    let payloadCache = null;
+
+    async function render() {
+      const mode = 'hmm';
+      if (!payloadCache) payloadCache = await loadData();
+
+      document.getElementById('assetBadge').textContent = (payloadCache.asset || 'btc').toUpperCase();
+      chart.setOption(buildOption(payloadCache.asset, payloadCache.features, payloadCache.onchain, payloadCache.dailyPrice, mode), { notMerge: true });
+    }
+
+    render().catch(err => {
+      chart.setOption({
+        backgroundColor: '#0b0e12',
+        title: { text: 'Eroare la încărcare dashboard', left: 'center', top: 'center', textStyle: { color: '#e8eefc' } },
+        graphic: { type: 'text', left: 'center', top: '55%', style: { text: String(err), fill: '#a9b4cc', fontSize: 12 } }
+      });
+    });
+
+    window.addEventListener('resize', () => chart.resize());
+    document.getElementById('desc')?.addEventListener('toggle', () => setTimeout(() => chart.resize(), 50));
+
+  </script>
+</body>
+
+</html>

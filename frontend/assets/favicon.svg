@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="BTC Pulse">
+  <defs>
+    <linearGradient id="g" x1="0" x2="1">
+      <stop offset="0" stop-color="#f7931a"/>
+      <stop offset="1" stop-color="#ffb347"/>
+    </linearGradient>
+  </defs>
+
+  <!-- coin background -->
+  <rect rx="32" width="256" height="256" fill="url(#g)"/>
+
+  <!-- inner ring -->
+  <circle cx="128" cy="128" r="86" fill="none" stroke="#ffffff33" stroke-width="10"/>
+
+  <!-- Bitcoin sign using Unicode ₿ (U+20BF) -->
+  <text x="50%" y="56%" font-size="120" font-family="Segoe UI, Roboto, Arial, sans-serif"
+        font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="middle">₿</text>
+
+  <!-- small shine -->
+  <path d="M40 60 C70 40, 140 30, 180 48" fill="none" stroke="#ffffff55" stroke-width="6" opacity="0.18" stroke-linecap="round"/>
+</svg>

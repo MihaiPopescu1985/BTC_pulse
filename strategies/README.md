@@ -1,0 +1,3 @@
+- update daily_price.json
+- python candles_btc_features.py --input daily_price.json --output out.csv
+- python candlestick_research_tool_v4.py   --input out.csv   --key-col timestamp   --start 2026-03-13   --end 2026-03-13   --standardize   --metric euclidean   --min-sim 0.50   --out-dir research_out_v4

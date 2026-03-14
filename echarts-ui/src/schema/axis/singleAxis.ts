@@ -1,0 +1,107 @@
+import type { SectionSchema } from '../../types/editor';
+import { createPositionFields, usesSingleAxisCoordinates } from '../helpers/fieldBuilders';
+
+export const defaultSingleAxisItem = {
+  show: true,
+  type: 'value',
+  orient: 'horizontal',
+  left: '10%',
+  right: '10%',
+  top: '50%',
+  bottom: 'auto',
+  min: '',
+  max: '',
+  axisLabel: {
+    show: true,
+  },
+};
+
+export const singleAxisSection: SectionSchema = {
+  id: 'singleAxis',
+  title: 'Single Axis',
+  arrayBinding: {
+    id: 'singleAxis',
+    path: 'singleAxis',
+    indexToken: '$singleAxisIndex',
+    itemLabel: 'Single Axis',
+    defaultItem: defaultSingleAxisItem,
+    minItems: 0,
+  },
+  fields: [
+    {
+      key: 'singleAxis.show',
+      label: 'Show',
+      path: 'singleAxis.$singleAxisIndex.show',
+      control: 'checkbox',
+      defaultValue: true,
+      visibleWhen: usesSingleAxisCoordinates,
+      helpText: 'Toggle single-axis visibility.',
+    },
+    {
+      key: 'singleAxis.type',
+      label: 'Type',
+      path: 'singleAxis.$singleAxisIndex.type',
+      control: 'select',
+      defaultValue: 'value',
+      visibleWhen: usesSingleAxisCoordinates,
+      helpText: 'Scale type for single axis.',
+      options: [
+        { label: 'Value', value: 'value' },
+        { label: 'Category', value: 'category' },
+        { label: 'Time', value: 'time' },
+        { label: 'Log', value: 'log' },
+      ],
+    },
+    {
+      key: 'singleAxis.orient',
+      label: 'Orient',
+      path: 'singleAxis.$singleAxisIndex.orient',
+      control: 'select',
+      defaultValue: 'horizontal',
+      visibleWhen: usesSingleAxisCoordinates,
+      helpText: 'Orientation of the single axis.',
+      options: [
+        { label: 'Horizontal', value: 'horizontal' },
+        { label: 'Vertical', value: 'vertical' },
+      ],
+    },
+    ...createPositionFields({
+      keyPrefix: 'singleAxis',
+      pathPrefix: 'singleAxis.$singleAxisIndex',
+      defaultValues: { left: '10%', right: '10%', top: '50%', bottom: 'auto' },
+      include: ['left', 'right', 'top', 'bottom'],
+      visibleWhen: usesSingleAxisCoordinates,
+      helpText: 'Position the selected single axis.',
+    }),
+    {
+      key: 'singleAxis.min',
+      label: 'Min',
+      path: 'singleAxis.$singleAxisIndex.min',
+      control: 'text',
+      defaultValue: '',
+      visibleWhen: usesSingleAxisCoordinates,
+      complexity: 'advanced',
+      helpText: 'Minimum axis value.',
+    },
+    {
+      key: 'singleAxis.max',
+      label: 'Max',
+      path: 'singleAxis.$singleAxisIndex.max',
+      control: 'text',
+      defaultValue: '',
+      visibleWhen: usesSingleAxisCoordinates,
+      complexity: 'advanced',
+      helpText: 'Maximum axis value.',
+    },
+    {
+      key: 'singleAxis.axisLabel.show',
+      label: 'Axis Label Show',
+      path: 'singleAxis.$singleAxisIndex.axisLabel.show',
+      control: 'checkbox',
+      defaultValue: true,
+      visibleWhen: usesSingleAxisCoordinates,
+      complexity: 'advanced',
+      helpText: 'Toggle single-axis labels.',
+    },
+  ],
+};

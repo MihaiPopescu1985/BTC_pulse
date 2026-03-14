@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ page.title | default: site.title }}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ site.baseurl }}/assets/favicon.svg">
+  <link rel="stylesheet" href="{{ site.baseurl }}/assets/styles/main.css">
+  <meta name="theme-color" content="#f7931a">
+</head>
+
+<body>
+
+  <header class="layout-header">
+    <div class="header-row">
+      <div class="brand">
+        <img src="{{ site.baseurl }}/assets/favicon.svg" alt="BTC Pulse" class="logo" />
+        <h1>BTC Pulse</h1>
+      </div>
+      <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false">
+        <span class="sr-only">Toggle navigation</span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+        <span class="nav-toggle__bar"></span>
+      </button>
+    </div>
+    <div class="last-update">
+      Last update: <time datetime="{{ site.data.last_update.iso | default: site.time | date_to_xmlschema }}">{{ site.data.last_update.iso | default: site.time | date: "%Y-%m-%d %H:%M UTC" }}</time>
+    </div>
+  </header>
+
+  <nav class="layout-nav" id="site-nav">
+    <ul>
+      <li>
+        <a class="nav-btn {% if page.url == '/' or page.url == '/index.html' %}active{% endif %}" href="{{ site.baseurl }}/">
+          Home
+        </a>
+      </li>
+      <li>
+        <a class="nav-btn {% if page.url contains '/blog/' %}active{% endif %}" href="{{ site.baseurl }}/blog/">
+          Blog
+        </a>
+      </li>
+      <li>
+        <a class="nav-btn {% if page.url == '/safe/' %}active{% endif %}" href="{{ site.baseurl }}/safe/">
+          SAFE
+        </a>
+      </li>
+      <li>
+        <a class="nav-btn {% if page.url == '/daily_tx_sizes/' %}active{% endif %}" href="{{ site.baseurl }}/daily_tx_sizes/">
+          Daily Transaction Sizes
+        </a>
+      </li>
+      <li>
+        <a class="nav-btn {% if page.url == '/daily_price/' %}active{% endif %}" href="{{ site.baseurl }}/daily_price/">
+          Daily Price
+        </a>
+      </li>
+      <li>
+        <a class="nav-btn {% if page.url == '/daily_amounts/' %}active{% endif %}" href="{{ site.baseurl }}/daily_amounts/">
+          Daily Amounts
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  {{ content }}
+
+  <footer class="layout-footer">© BTC Pulse</footer>
+
+  <script src="{{ site.baseurl }}/assets/scripts/nav.js" defer></script>
+
+</body>
+
+</html>
