@@ -8,7 +8,7 @@ tasks:
       python src/crawler/query.py
     deps:
       - workspace:workspace-init
-
+    description: Run every time for synchronizing the data (on-chain + price)
 
   daily-run:
     script: |
@@ -54,5 +54,6 @@ tasks:
     options:
       interactive: true
       cache: false
+    description: Generate the data readings based on certain dates which must be introduced.
     # deps:
     #   - sync
