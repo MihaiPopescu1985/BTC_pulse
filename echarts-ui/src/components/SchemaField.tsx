@@ -169,6 +169,7 @@ export const SchemaField = ({
   const hasDefault = field.defaultValue !== undefined;
   const showSearchHints = searchQuery.trim().length > 0;
   const fieldPathLabel = displayPath ?? path;
+  const isCheckboxField = !isTupleEditor && !isArrayEditor && field.control === 'checkbox';
   const comparisonKey = useMemo(() => toComparisonKey(value), [value]);
   const debugValuePreview = useMemo(() => toDebugValuePreview(value), [value]);
   const lastValueRef = useRef(comparisonKey);
@@ -245,29 +246,61 @@ export const SchemaField = ({
     }
   };
 
-  return (
-    <div
-      className={`field ${field.control === 'checkbox' ? 'field-checkbox' : ''} ${didChangeFlash ? 'field-changed' : ''}`}
-      data-editor-path={path}
+  const resetButton = hasDefault ? (
+    <button
+      type="button"
+      className="field-reset"
+      onClick={() => onResetToDefault(path, field.defaultValue)}
     >
-      <div className="field-header">
-        <label className="field-label" htmlFor={inputId}>
-          {renderHighlightedText(field.label, searchQuery)}
-        </label>
-        {hasDefault ? (
-          <button
-            type="button"
-            className="field-reset"
-            onClick={() => onResetToDefault(path, field.defaultValue)}
-          >
-            Reset
-          </button>
-        ) : null}
-      </div>
+      Reset
+    </button>
+  ) : null;
 
+  const fieldMeta = (
+    <>
       {showSearchHints ? <p className="field-path">{renderHighlightedText(fieldPathLabel, searchQuery)}</p> : null}
       {field.description ? <p className="field-description">{renderHighlightedText(field.description, searchQuery)}</p> : null}
       {field.helpText ? <p className="field-help">{field.helpText}</p> : null}
+    </>
+  );
+
+  return (
+    <div
+      className={`field ${isCheckboxField ? 'field-checkbox' : ''} ${didChangeFlash ? 'field-changed' : ''}`}
+      data-editor-path={path}
+    >
+      {isCheckboxField ? (
+        <div className="field-checkbox-main">
+          <div className="field-checkbox-text">
+            <div className="field-header">
+              <label className="field-label" htmlFor={inputId}>
+                {renderHighlightedText(field.label, searchQuery)}
+              </label>
+              {resetButton}
+            </div>
+            {fieldMeta}
+          </div>
+          <div className="field-checkbox-control">
+            <input
+              id={inputId}
+              type="checkbox"
+              checked={Boolean(value)}
+              onChange={(event) => onValueChange(path, event.target.checked)}
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="field-header">
+            <label className="field-label" htmlFor={inputId}>
+              {renderHighlightedText(field.label, searchQuery)}
+            </label>
+            {resetButton}
+          </div>
+
+          {fieldMeta}
+        </>
+      )}
 
       {isTupleEditor ? (
         <div className="tuple-editor">
@@ -317,15 +350,6 @@ export const SchemaField = ({
             {error ? <span className="field-error">{error}</span> : null}
           </div>
         </>
-      ) : null}
-
-      {!isTupleEditor && !isArrayEditor && field.control === 'checkbox' ? (
-        <input
-          id={inputId}
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(event) => onValueChange(path, event.target.checked)}
-        />
       ) : null}
 
       {!isTupleEditor && !isArrayEditor && field.control === 'select' ? (

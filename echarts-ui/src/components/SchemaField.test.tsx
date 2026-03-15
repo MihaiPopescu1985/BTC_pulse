@@ -12,6 +12,16 @@ const textField: FieldSchema = {
   defaultValue: '',
 };
 
+const checkboxField: FieldSchema = {
+  key: 'legend.show',
+  label: 'Show Legend',
+  path: 'legend.show',
+  control: 'checkbox',
+  defaultValue: false,
+  description: 'Display legend entries in the chart.',
+  helpText: 'Useful for multi-series charts.',
+};
+
 describe('SchemaField', () => {
   it('shows debug row only in manual test mode', () => {
     const { rerender } = render(
@@ -65,5 +75,77 @@ describe('SchemaField', () => {
       expect(fieldContainer?.classList.contains('field-changed')).toBe(true);
     });
   });
-});
 
+  it('renders checkbox fields with dedicated checkbox layout classes', () => {
+    const { container } = render(
+      <SchemaField
+        field={checkboxField}
+        path="legend.show"
+        value={true}
+        onValueChange={vi.fn()}
+        onResetToDefault={vi.fn()}
+      />,
+    );
+
+    const fieldContainer = container.querySelector('[data-editor-path="legend.show"]');
+    expect(fieldContainer?.classList.contains('field-checkbox')).toBe(true);
+    expect(container.querySelector('.field-checkbox-main')).toBeTruthy();
+    expect(container.querySelector('.field-checkbox-control')).toBeTruthy();
+  });
+
+  it('toggles checkbox when the label is clicked', () => {
+    const onValueChange = vi.fn();
+
+    render(
+      <SchemaField
+        field={checkboxField}
+        path="legend.show"
+        value={false}
+        onValueChange={onValueChange}
+        onResetToDefault={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Show Legend'));
+
+    expect(onValueChange).toHaveBeenCalledWith('legend.show', true);
+  });
+
+  it('renders description, help text, search path, and debug metadata for checkbox fields', () => {
+    render(
+      <SchemaField
+        field={checkboxField}
+        path="legend.show"
+        searchQuery="legend"
+        manualTestMode
+        value={true}
+        onValueChange={vi.fn()}
+        onResetToDefault={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText((_, element) => element?.textContent === 'Display legend entries in the chart.')).toBeInTheDocument();
+    expect(screen.getByText('Useful for multi-series charts.')).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === 'legend.show')).toBeInTheDocument();
+    expect(screen.getByText('Path: legend.show')).toBeInTheDocument();
+    expect(screen.getByText('Value: true')).toBeInTheDocument();
+  });
+
+  it('shows reset button and resets checkbox fields', () => {
+    const onResetToDefault = vi.fn();
+
+    render(
+      <SchemaField
+        field={checkboxField}
+        path="legend.show"
+        value={true}
+        onValueChange={vi.fn()}
+        onResetToDefault={onResetToDefault}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+
+    expect(onResetToDefault).toHaveBeenCalledWith('legend.show', false);
+  });
+});

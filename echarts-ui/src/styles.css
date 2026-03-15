@@ -651,11 +651,35 @@ button:disabled {
   background: #1f2937;
   padding: 4px 8px;
   font-size: 0.76rem;
+  flex-shrink: 0;
 }
 
-.field-checkbox input[type='checkbox'] {
-  width: auto;
-  justify-self: flex-start;
+.field-checkbox-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.field-checkbox-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-checkbox-control {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.field-checkbox-control input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  flex: 0 0 auto;
 }
 
 input,
