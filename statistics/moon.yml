@@ -13,6 +13,9 @@ tasks:
 
   daily-run:
     script: |
+      # Remove the old generated file to start clean
+      rm daily_reading.txt
+     
       # Clean the console
       echo "Press ENTER to continue."
       read
