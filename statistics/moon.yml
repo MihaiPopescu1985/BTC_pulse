@@ -1,7 +1,8 @@
 tasks:
   sync:
     script: |
-      ./sync_chain.sh
+      # TODO: verify as it seems not to work
+      # ./sync_chain.sh
 
       source ../.venv/bin/activate
 
