@@ -1,5 +1,7 @@
-repomix
-pandas
-joblib
-scikit-learn
-matplotlib
+repomix==0.5.0
+pandas==3.0.1
+joblib==1.5.3
+scikit-learn==1.8.0
+matplotlib==3.10.8
+# requests warns if repomix pulls chardet>=6 into the shared virtualenv.
+chardet==5.2.0

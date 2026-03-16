@@ -1,9 +1,0 @@
-tasks:
-  setup:
-    script: npm install && npm run dev
-
-  build:
-    script: npm run build && npm run preview
-
-  test:
-    script: npm test

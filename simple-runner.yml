@@ -1,0 +1,155 @@
+buttons:
+  - id: workspace-init
+    label: Workspace - initialize the Python virtual environment
+    cwd: .
+    script: |
+      python -m venv .venv
+      source ./.venv/bin/activate
+      pip install -r requirements.txt
+
+  - id: crawler-build
+    label: Crawler - build
+    cwd: crawler
+    script: make
+
+  - id: crawler-unit-test
+    label: Crawler - run unit-tests
+    cwd: crawler
+    script: make unit-test
+
+  - id: crawler-integration-test
+    label: Crawler - run integration tests
+    cwd: crawler
+    script: make integration-test
+
+  - id: crawler-full-test
+    label: Crawler - run full tests
+    cwd: crawler
+    script: make test
+
+  - id: crawler-clean
+    label: Crawler - clean
+    cwd: crawler
+    script: make clean
+
+  - id: echarts-ui-setup
+    label: EChartsUI - run setup
+    cwd: echarts-ui
+    script: npm install && npm run dev
+
+  - id: echarts-ui-run
+    label: EChartsUI - run preview
+    cwd: echarts-ui
+    script: npm run build && npm run preview
+
+  - id: echarts-ui-test
+    label: EChartsUI - run tests
+    cwd: echarts-ui
+    script: npm test
+
+  - id: frontend-setup
+    label: Frontend - run setup
+    cwd: frontend
+    script: |
+      apt-get install ruby-full build-essential
+      gem install jekyll bundler
+      bundle install
+    
+  - id: frontent-serve
+    label: Frontend - serve
+    cwd: frontend
+    script: bundle exec jekyll serve
+
+  - id: statistics-sync
+    label: Statistics - synchronize data
+    cwd: statistics
+    script: |
+      # TODO: verify as it seems not to work
+      # ./sync_chain.sh
+
+      source ../.venv/bin/activate
+      python src/crawler/query.py
+
+  - id: statistics-daily-run
+    label: Statistics - daily run
+    cwd: statistics
+    script: |
+      # Remove the old generated file to start clean
+      rm daily_reading.txt
+     
+      # Clean the console
+      echo "Press ENTER to continue."
+      read
+
+      # Get the start date
+      while true; do
+          read -r -p "Enter start date (yyyy-MM-DD): " start
+          [[ $start =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          echo "Only digits allowed."
+      done
+
+      # Get the stop date
+      while true; do
+          read -r -p "Enter end date (yyyy-MM-DD): " end
+          [[ $end =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          echo "Only digits allowed."
+      done
+
+      source ../.venv/bin/activate
+
+      python src/util/print_features_range.py \
+        $start \
+        $end \
+        --path out/btc/features.json >> daily_reading.txt
+
+      python src/util/print_features_range.py \
+        $start \
+        $end \
+        --path out/btc/onchain_features.json >> daily_reading.txt
+
+      python src/util/safe_touch_probabilities.py \
+        --price-json data/daily_price.json \
+        --features-json out/btc/features.json \
+        --date $end \
+        --days 10 \
+        --sims 20000 >> daily_reading.txt
+
+  - id: strategies-candles
+    label: Strategies - candles similarities
+    cwd: strategies
+    script: |
+      # Clean the console
+      echo "Press ENTER to continue."
+      read
+
+      # Get the start date
+      while true; do
+          read -r -p "Enter start date (yyyy-MM-DD): " start
+          [[ $start =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          echo "Only digits allowed."
+      done
+
+      # Get the stop date
+      while true; do
+          read -r -p "Enter end date (yyyy-MM-DD): " end
+          [[ $end =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          echo "Only digits allowed."
+      done
+
+      source ../.venv/bin/activate
+
+      python candles_btc_features.py \
+        --input ../frontend/_data/daily_price.json \
+        --output out.csv
+
+      python candlestick_research_tool_v4.py \
+        --input out.csv \
+        --key-col timestamp \
+        --start $start \
+        --end $end \
+        --standardize \
+        --metric euclidean \
+        --min-sim 0.50 \
+        --out-dir research_out_v4
+
+      firefox research_out_v4/report.html
