@@ -1,0 +1,47 @@
+{
+  "name": "simple-runner",
+  "displayName": "Simple Runner",
+  "description": "A minimal VS Code extension that runs configured scripts from workspace subdirectories.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:simpleRunnerView",
+    "onCommand:simpleRunner.runButton"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "simpleRunner.runButton",
+        "title": "Run Simple Runner Button"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "simpleRunnerView",
+          "name": "Simple Runner"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  }
+}
