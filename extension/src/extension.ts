@@ -1,9 +1,11 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { parse } from "yaml";
 
 const CONFIG_FILE_NAME = "simple-runner.yml";
+const BASH_PATH = "/bin/bash";
 
 type ScriptSetting = string | string[];
 
@@ -120,7 +122,6 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      // Resolve the configured directory relative to the first workspace folder.
       const targetDirectory = path.resolve(workspaceFolder.uri.fsPath, button.cwd);
 
       if (!directoryExists(targetDirectory)) {
@@ -130,15 +131,28 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      // A terminal is the simplest way to show live command output inside VS Code.
-      // The normalized script text is sent as-is, so it can be one command or many lines.
-      const terminal = vscode.window.createTerminal({
+      if (!startsWithShebang(button.script) && !bashExists()) {
+        vscode.window.showErrorMessage(
+          "Simple Runner: scripts without a shebang need /bin/bash to be available."
+        );
+        return;
+      }
+
+      // Write the configured script to a temporary file so it runs as one real script.
+      const scriptPath = writeTemporaryScript(button.script);
+      const terminalOptions: vscode.TerminalOptions = {
         name: `Simple Runner: ${button.label}`,
         cwd: targetDirectory
-      });
+      };
+
+      if (bashExists()) {
+        terminalOptions.shellPath = BASH_PATH;
+      }
+
+      const terminal = vscode.window.createTerminal(terminalOptions);
 
       terminal.show(true);
-      terminal.sendText(button.script, true);
+      terminal.sendText(buildExecutionCommand(scriptPath, button.script), true);
     }
   );
 
@@ -240,7 +254,6 @@ function normalizeButton(value: unknown, index: number): ButtonConfig | undefine
   const cwd = readNonEmptyString(item.cwd);
   const script = normalizeScript(item.script);
 
-  // Skip invalid entries so a bad config item does not break the whole view.
   if (!cwd || !script) {
     return undefined;
   }
@@ -284,4 +297,40 @@ function directoryExists(targetPath: string): boolean {
   } catch {
     return false;
   }
+}
+
+function bashExists(): boolean {
+  return process.platform !== "win32" && fs.existsSync(BASH_PATH);
+}
+
+function startsWithShebang(script: string): boolean {
+  return script.startsWith("#!");
+}
+
+function writeTemporaryScript(script: string): string {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "simple-runner-"));
+  const extension = startsWithShebang(script) ? "script" : "script.sh";
+  const scriptPath = path.join(tempDirectory, extension);
+
+  fs.writeFileSync(scriptPath, ensureTrailingNewline(script), { mode: 0o700 });
+
+  return scriptPath;
+}
+
+function ensureTrailingNewline(script: string): string {
+  return script.endsWith("\n") ? script : `${script}\n`;
+}
+
+function buildExecutionCommand(scriptPath: string, script: string): string {
+  const quotedScriptPath = quoteForBash(scriptPath);
+  const quotedDirectory = quoteForBash(path.dirname(scriptPath));
+  const runCommand = startsWithShebang(script)
+    ? quotedScriptPath
+    : `bash ${quotedScriptPath}`;
+
+  return `${runCommand}; status=$?; rm -f ${quotedScriptPath}; rmdir ${quotedDirectory} 2>/dev/null; echo; echo "[Simple Runner exit code: $status]"`;
+}
+
+function quoteForBash(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

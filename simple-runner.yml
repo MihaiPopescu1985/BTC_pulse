@@ -74,6 +74,7 @@ buttons:
     label: Statistics - daily run
     cwd: statistics
     script: |
+      #!/bin/bash
       # Remove the old generated file to start clean
       rm daily_reading.txt
      

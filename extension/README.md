@@ -17,7 +17,9 @@ The implementation currently keeps the extension id as `simple-runner` and reads
 - Each button has a `script` value.
 - `script` can be either a single string or an array of strings.
 - For multi-line scripts, YAML block style with `|` is the most readable option.
-- If `script` is an array, the extension joins the lines with newlines before sending the script to the terminal.
+- When you run a button, the extension writes the configured script to a temporary file and executes that file as a standalone script.
+- If the script starts with a shebang like `#!/bin/bash`, that shebang is honored.
+- If the script has no shebang, the extension runs it with `/bin/bash` on Unix-like systems.
 - The terminal working directory is set to the configured workspace-relative folder.
 - Terminal output is visible live in VS Code.
 - When `simple-runner.yml` changes, the tree view refreshes automatically.
@@ -44,6 +46,7 @@ buttons:
     label: Generate daily reading
     cwd: statistics
     script: |
+      #!/bin/bash
       # Remove the old generated file to start clean
       rm -f daily_reading.txt
 
@@ -108,7 +111,8 @@ Each button supports:
 - If the configured `cwd` does not exist, the extension shows an error message when you run a button.
 - Entries missing `cwd` or `script` are ignored so a bad item does not break the whole view.
 - If `label` is missing, the extension falls back to `id`.
-- If you use Bash-specific syntax like `source`, `[[ ... ]]`, or `while ...; do`, the terminal shell must support it.
+- On Unix-like systems, YAML block scripts are executed as temporary standalone script files.
+- If you want a specific interpreter, start the script with a shebang such as `#!/bin/bash` or `#!/usr/bin/env python3`.
 
 ## Run And Debug
 
