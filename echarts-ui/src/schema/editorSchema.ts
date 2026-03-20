@@ -1,1 +1,0 @@
-export { editorSchema } from './index';
