@@ -5,6 +5,7 @@
 **/__pycache__
 **/*.pyc
 **/*/.idea
+playground
 ## moon
 .moon/cache
 .moon/docker
