@@ -6,6 +6,8 @@
 **/*.pyc
 **/*/.idea
 playground
+**/repomix*.md
+
 ## moon
 .moon/cache
 .moon/docker
