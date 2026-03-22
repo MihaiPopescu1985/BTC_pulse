@@ -537,11 +537,6 @@ def export_data():
     copyfile(daily_amounts_path, statistics_path / "data/daily_amounts.json")
     copyfile(daily_tx_size_output_path, statistics_path / "data/daily_tx_size.json")
     os.chdir(statistics_path)
-    subprocess.run(["./generate_statistics.sh"])
-    features_file_path = statistics_path / "out/btc/features.json"
-    onchain_features_file_path = statistics_path / "out/btc/onchain_features.json"
-    copyfile(features_file_path, data_location / "features.json")
-    copyfile(onchain_features_file_path, data_location / "onchain_features.json")
 
 # Deprecated
 # def publish_changes():

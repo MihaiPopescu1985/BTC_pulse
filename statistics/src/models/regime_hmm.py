@@ -1,446 +1,641 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Tuple, List
+from itertools import permutations
+from typing import Any, Literal
+import os
+
+import joblib
 import numpy as np
 import pandas as pd
 
-import os
-import joblib
+
+HMMMode = Literal["filter", "smooth"]
+SEMANTIC_REGIME_LABELS: tuple[str, ...] = ("CORE", "DRIFT", "SHOCK", "SURGE")
+# Canonical descriptive input set for the diagonal-covariance HMM.
+# Keep this compact and stable to limit redundancy and seed sensitivity.
+HMM_FEATURE_COLS: tuple[str, ...] = (
+    "r1",
+    "TS_50",
+    "ER_20",
+    "atr_pct",
+    "band_pos",
+    "relative_volume_20",
+)
+STATE_SIGNATURE_COLUMNS: tuple[str, ...] = (
+    "r1",
+    "TS_20",
+    "TS_50",
+    "ER_20",
+    "vol_20",
+    "atr_pct",
+    "ewma_vol",
+    "band_w",
+    "band_pos",
+    "dist_from_mean_vol_units",
+    "relative_volume_20",
+)
 
 
 @dataclass(frozen=True)
 class HMMConfig:
+    """Configuration for the descriptive-feature HMM regime model.
+
+    The fitted HMM operates on a fixed descriptive feature contract defined by
+    ``HMM_FEATURE_COLS``. Semantic labeling is intentionally defined only for a
+    4-state model. Latent states are inferred statistically first, then mapped
+    afterward to the directional semantic labels ``CORE``, ``DRIFT``,
+    ``SHOCK``, and ``SURGE``.
+    """
+
     n_states: int = 4
     n_iter: int = 80
     tol: float = 1e-4
     seed: int = 42
-    reg_covar: float = 1e-4  # diagonal covariance floor
-    # for stability on non-stationary markets you can re-fit rolling later
-    # but start with global fit.
+    reg_covar: float = 1e-4
+    min_rows: int = 250
+    init_kmeans_iter: int = 12
+    sticky_self_transition: float = 0.85
 
 
-# Features used for HMM (small & stable subset)
-HMM_FEATURE_COLS = [
-    "r1",        # 1d log return
-    "TS_20",
-    "TS_50",
-    "band_w",
-    "band_pos",
-    "vol_20",
-    "range_score",
-]
+# -----------------------------
+# Validation and preparation
+# -----------------------------
 
 
-def _nan_guard(df: pd.DataFrame, cols: List[str]) -> pd.DataFrame:
-    out = df.copy()
-    out = out.replace([np.inf, -np.inf], np.nan)
-    out = out.dropna(subset=cols)
-    return out
+def _validate_hmm_config(cfg: HMMConfig) -> None:
+    if cfg.n_states != 4:
+        raise ValueError(
+            "Semantic HMM labeling is defined only for n_states == 4. "
+            f"Received n_states={cfg.n_states}."
+        )
+    if not 0.0 < cfg.sticky_self_transition < 1.0:
+        raise ValueError("sticky_self_transition must be strictly between 0 and 1.")
 
 
-def _standardize(X: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    mu = np.nanmean(X, axis=0)
-    sd = np.nanstd(X, axis=0)
-    sd = np.where(sd == 0, 1.0, sd)
-    Xs = (X - mu) / sd
-    return Xs, mu, sd
+def _prepare_hmm_features(
+    features: pd.DataFrame,
+    feature_cols: tuple[str, ...],
+) -> tuple[pd.DataFrame, list[str], dict[str, Any]]:
+    """Validate the explicit HMM feature contract and drop incomplete rows.
+
+    The active HMM feature set is fixed by the caller. This stage does not
+    silently degrade to a smaller subset when columns are missing.
+    """
+    cleaned = features.replace([np.inf, -np.inf], np.nan).copy()
+
+    missing_columns = [column for column in feature_cols if column not in cleaned.columns]
+    if missing_columns:
+        raise ValueError(
+            "Descriptive feature table is missing required HMM inputs: "
+            f"{missing_columns}. Expected fixed input set: {list(feature_cols)}."
+        )
+
+    empty_columns = [column for column in feature_cols if cleaned[column].isna().all()]
+    if empty_columns:
+        raise ValueError(
+            "HMM input columns contain no usable values after cleaning: "
+            f"{empty_columns}."
+        )
+
+    usable = cleaned.dropna(subset=list(feature_cols))
+    dropped_rows = len(cleaned) - len(usable)
+    usable_info = {
+        "feature_cols": list(feature_cols),
+        "total_rows": int(len(cleaned)),
+        "usable_rows": int(len(usable)),
+        "dropped_rows": int(dropped_rows),
+        "usable_start": usable.index.min().strftime("%Y-%m-%d") if not usable.empty else None,
+        "usable_end": usable.index.max().strftime("%Y-%m-%d") if not usable.empty else None,
+    }
+    return usable, list(feature_cols), usable_info
+
+
+# -----------------------------
+# Numeric helpers
+# -----------------------------
+
+
+def _standardize(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    mean = np.nanmean(X, axis=0)
+    std = np.nanstd(X, axis=0)
+    std = np.where(std == 0.0, 1.0, std)
+    standardized = (X - mean) / std
+    return standardized, mean, std
 
 
 def _logsumexp(a: np.ndarray, axis: int = -1) -> np.ndarray:
-    m = np.max(a, axis=axis, keepdims=True)
-    return (m + np.log(np.sum(np.exp(a - m), axis=axis, keepdims=True))).squeeze(axis)
+    maximum = np.max(a, axis=axis, keepdims=True)
+    return (maximum + np.log(np.sum(np.exp(a - maximum), axis=axis, keepdims=True))).squeeze(axis)
 
 
 def _log_gaussian_diag(X: np.ndarray, means: np.ndarray, vars_diag: np.ndarray) -> np.ndarray:
-    """
-    X: (T, D)
-    means: (K, D)
-    vars_diag: (K, D) diagonal variances
-    returns logB: (T, K) where logB[t,k] = log N(X[t] | mean_k, diag(var_k))
-    """
-    T, D = X.shape
-    K = means.shape[0]
-    # precompute constants per state
-    # log det = sum log(var)
-    log_det = np.sum(np.log(vars_diag), axis=1)  # (K,)
-    # quadratic term
-    # (X - mu)^2 / var
-    logB = np.empty((T, K), dtype=float)
-    for k in range(K):
-        diff = X - means[k]
-        quad = np.sum((diff * diff) / vars_diag[k], axis=1)  # (T,)
-        logB[:, k] = -0.5 * (D * np.log(2.0 * np.pi) + log_det[k] + quad)
-    return logB
+    """Evaluate diagonal-Gaussian log likelihoods for every state."""
+    num_rows, num_features = X.shape
+    num_states = means.shape[0]
+    log_det = np.sum(np.log(vars_diag), axis=1)
+    log_density = np.empty((num_rows, num_states), dtype=float)
+    for state in range(num_states):
+        diff = X - means[state]
+        quad = np.sum((diff * diff) / vars_diag[state], axis=1)
+        log_density[:, state] = -0.5 * (num_features * np.log(2.0 * np.pi) + log_det[state] + quad)
+    return log_density
 
 
-def hmm_filter_posterior(X: np.ndarray, params: Dict) -> np.ndarray:
-    """
-    Forward-only (filtering): gamma_filt[t,k] = p(z_t=k | x_1..x_t)
-    This does NOT repaint when you append new observations.
+# -----------------------------
+# Posterior computation
+# -----------------------------
+
+
+def hmm_filter_posterior(X: np.ndarray, params: dict[str, np.ndarray]) -> np.ndarray:
+    """Compute forward-only state posteriors.
+
+    Filtering uses information up to time ``t`` only and is suitable for
+    non-repainting online inference.
     """
     pi = params["pi"]
-    A = params["A"]
+    transitions = params["A"]
     means = params["means"]
     vars_diag = params["vars_diag"]
 
     log_pi = np.log(pi + 1e-12)
-    log_A = np.log(A + 1e-12)
+    log_A = np.log(transitions + 1e-12)
     logB = _log_gaussian_diag(X, means, vars_diag)
 
-    T, K = logB.shape
-    log_alpha = np.empty((T, K), dtype=float)
+    num_rows, num_states = logB.shape
+    log_alpha = np.empty((num_rows, num_states), dtype=float)
 
     log_alpha[0] = log_pi + logB[0]
-    log_alpha[0] -= _logsumexp(log_alpha[0], axis=0)  # normalize
+    log_alpha[0] -= _logsumexp(log_alpha[0], axis=0)
 
-    for t in range(1, T):
-        tmp = log_alpha[t - 1][:, None] + log_A
-        log_alpha[t] = logB[t] + _logsumexp(tmp, axis=0)
-        log_alpha[t] -= _logsumexp(log_alpha[t], axis=0)  # normalize
+    for row in range(1, num_rows):
+        transition_term = log_alpha[row - 1][:, None] + log_A
+        log_alpha[row] = logB[row] + _logsumexp(transition_term, axis=0)
+        log_alpha[row] -= _logsumexp(log_alpha[row], axis=0)
 
-    gamma_filt = np.exp(log_alpha)  # already normalized per t
-    return gamma_filt
+    return np.exp(log_alpha)
 
 
-def _forward_backward_log(log_pi: np.ndarray, log_A: np.ndarray, logB: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
-    """
-    log-space forward-backward.
-    log_pi: (K,)
-    log_A: (K,K)
-    logB: (T,K)
-    returns:
-      log_alpha: (T,K)
-      log_beta: (T,K)
-      loglik: scalar
-    """
-    T, K = logB.shape
-    log_alpha = np.empty((T, K), dtype=float)
-    log_beta = np.empty((T, K), dtype=float)
+def _forward_backward_log(log_pi: np.ndarray, log_A: np.ndarray, logB: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+    num_rows, num_states = logB.shape
+    log_alpha = np.empty((num_rows, num_states), dtype=float)
+    log_beta = np.empty((num_rows, num_states), dtype=float)
 
     log_alpha[0] = log_pi + logB[0]
-    for t in range(1, T):
-        # log_alpha[t,k] = logB[t,k] + logsum_j (log_alpha[t-1,j] + logA[j,k])
-        tmp = log_alpha[t - 1][:, None] + log_A  # (K,K)
-        log_alpha[t] = logB[t] + _logsumexp(tmp, axis=0)
+    for row in range(1, num_rows):
+        transition_term = log_alpha[row - 1][:, None] + log_A
+        log_alpha[row] = logB[row] + _logsumexp(transition_term, axis=0)
 
-    loglik = float(_logsumexp(log_alpha[T - 1], axis=0))
+    loglik = float(_logsumexp(log_alpha[num_rows - 1], axis=0))
 
-    log_beta[T - 1] = 0.0
-    for t in range(T - 2, -1, -1):
-        # log_beta[t,j] = logsum_k (logA[j,k] + logB[t+1,k] + log_beta[t+1,k])
-        tmp = log_A + (logB[t + 1] + log_beta[t + 1])[None, :]  # (K,K)
-        log_beta[t] = _logsumexp(tmp, axis=1)
+    log_beta[num_rows - 1] = 0.0
+    for row in range(num_rows - 2, -1, -1):
+        transition_term = log_A + (logB[row + 1] + log_beta[row + 1])[None, :]
+        log_beta[row] = _logsumexp(transition_term, axis=1)
 
     return log_alpha, log_beta, loglik
 
 
-def _init_params(X: np.ndarray, K: int, seed: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def hmm_posterior(X: np.ndarray, params: dict[str, np.ndarray]) -> np.ndarray:
+    """Compute smoothed posteriors using the full sample.
+
+    Smoothing uses past and future observations and can repaint when new data is
+    appended. It is useful for research and retrospective diagnostics.
     """
-    Simple init:
-      - choose K random points as means
-      - set diagonal vars to feature variances
-      - init A close to identity (sticky regimes)
-    """
+    log_pi = np.log(params["pi"] + 1e-12)
+    log_A = np.log(params["A"] + 1e-12)
+    logB = _log_gaussian_diag(X, params["means"], params["vars_diag"])
+
+    log_alpha, log_beta, _ = _forward_backward_log(log_pi, log_A, logB)
+    log_gamma = log_alpha + log_beta
+    log_gamma = log_gamma - _logsumexp(log_gamma, axis=1)[:, None]
+    return np.exp(log_gamma)
+
+
+# -----------------------------
+# Initialization
+# -----------------------------
+
+
+def _pairwise_squared_distance(X: np.ndarray, centers: np.ndarray) -> np.ndarray:
+    diff = X[:, None, :] - centers[None, :, :]
+    return np.sum(diff * diff, axis=2)
+
+
+def _kmeans_plus_plus(X: np.ndarray, n_clusters: int, seed: int) -> np.ndarray:
     rng = np.random.default_rng(seed)
-    T, D = X.shape
+    num_rows = X.shape[0]
+    centers = np.empty((n_clusters, X.shape[1]), dtype=float)
 
-    idx = rng.choice(T, size=K, replace=False) if T >= K else np.arange(T)
-    means = X[idx].copy()
+    first_idx = int(rng.integers(num_rows))
+    centers[0] = X[first_idx]
+    min_dist_sq = np.sum((X - centers[0]) ** 2, axis=1)
 
-    global_var = np.var(X, axis=0) + 1e-2
-    vars_diag = np.tile(global_var[None, :], (K, 1))
+    for cluster in range(1, n_clusters):
+        total_dist = float(min_dist_sq.sum())
+        if total_dist <= 0.0:
+            centers[cluster] = X[int(rng.integers(num_rows))]
+        else:
+            probs = min_dist_sq / total_dist
+            next_idx = int(rng.choice(num_rows, p=probs))
+            centers[cluster] = X[next_idx]
+        min_dist_sq = np.minimum(min_dist_sq, np.sum((X - centers[cluster]) ** 2, axis=1))
 
-    A = np.full((K, K), 1.0 / K, dtype=float)
-    # make it sticky
-    for k in range(K):
-        A[k, k] += 2.0
-    A = A / A.sum(axis=1, keepdims=True)
-
-    pi = np.full((K,), 1.0 / K, dtype=float)
-    return pi, A, means, vars_diag
+    return centers
 
 
-def fit_gaussian_hmm(X: np.ndarray, cfg: HMMConfig) -> Dict:
-    """
-    Fits a Gaussian HMM with diagonal covariance using EM (Baum-Welch).
-    Returns dict with parameters and training info.
-    """
-    K = cfg.n_states
-    T, D = X.shape
-    if T < 200:
-        raise ValueError(f"Too few rows for HMM: {T}")
+def _run_simple_kmeans(X: np.ndarray, n_clusters: int, seed: int, n_iter: int) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    centers = _kmeans_plus_plus(X, n_clusters, seed)
 
-    pi, A, means, vars_diag = _init_params(X, K, cfg.seed)
+    for _ in range(n_iter):
+        dist_sq = _pairwise_squared_distance(X, centers)
+        labels = dist_sq.argmin(axis=1)
+        updated = centers.copy()
+        for cluster in range(n_clusters):
+            members = X[labels == cluster]
+            if len(members) == 0:
+                updated[cluster] = X[int(rng.integers(len(X)))]
+            else:
+                updated[cluster] = members.mean(axis=0)
+        if np.allclose(updated, centers):
+            centers = updated
+            break
+        centers = updated
 
-    prev_ll = -np.inf
-    for it in range(cfg.n_iter):
+    final_labels = _pairwise_squared_distance(X, centers).argmin(axis=1)
+    return centers, final_labels
+
+
+def _init_params(X: np.ndarray, cfg: HMMConfig) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Initialize HMM parameters with light k-means clustering in standardized space."""
+    num_rows, num_features = X.shape
+    centers, labels = _run_simple_kmeans(X, cfg.n_states, cfg.seed, cfg.init_kmeans_iter)
+
+    global_var = np.var(X, axis=0) + cfg.reg_covar
+    vars_diag = np.tile(global_var[None, :], (cfg.n_states, 1))
+    occupancy = np.zeros(cfg.n_states, dtype=float)
+
+    for state in range(cfg.n_states):
+        members = X[labels == state]
+        occupancy[state] = float(len(members))
+        if len(members) >= 2:
+            vars_diag[state] = np.maximum(members.var(axis=0), cfg.reg_covar)
+
+    occupancy = occupancy + 1.0
+    pi = occupancy / occupancy.sum()
+
+    off_diag_value = (1.0 - cfg.sticky_self_transition) / (cfg.n_states - 1)
+    transitions = np.full((cfg.n_states, cfg.n_states), off_diag_value, dtype=float)
+    np.fill_diagonal(transitions, cfg.sticky_self_transition)
+
+    if num_rows < cfg.n_states:
+        raise ValueError(f"Too few rows for HMM initialization: {num_rows} < {cfg.n_states}")
+
+    return pi, transitions, centers, vars_diag
+
+
+# -----------------------------
+# Training
+# -----------------------------
+
+
+def _count_hmm_parameters(n_states: int, n_features: int) -> int:
+    return (n_states - 1) + n_states * (n_states - 1) + 2 * n_states * n_features
+
+
+def fit_gaussian_hmm(X: np.ndarray, cfg: HMMConfig | None = None) -> dict[str, Any]:
+    """Fit a diagonal-covariance Gaussian HMM using EM."""
+    if cfg is None:
+        cfg = HMMConfig()
+    _validate_hmm_config(cfg)
+
+    num_rows, num_features = X.shape
+    if num_rows < cfg.min_rows:
+        raise ValueError(f"Too few rows for HMM fitting: {num_rows} < {cfg.min_rows}")
+
+    pi, transitions, means, vars_diag = _init_params(X, cfg)
+
+    prev_loglik = -np.inf
+    converged = False
+    n_iter_ran = 0
+    for iteration in range(cfg.n_iter):
         log_pi = np.log(pi + 1e-12)
-        log_A = np.log(A + 1e-12)
-
+        log_A = np.log(transitions + 1e-12)
         logB = _log_gaussian_diag(X, means, vars_diag)
-        log_alpha, log_beta, ll = _forward_backward_log(log_pi, log_A, logB)
+        log_alpha, log_beta, loglik = _forward_backward_log(log_pi, log_A, logB)
 
-        # gamma (T,K)
         log_gamma = log_alpha + log_beta
         log_gamma = log_gamma - _logsumexp(log_gamma, axis=1)[:, None]
         gamma = np.exp(log_gamma)
 
-        # xi sums (K,K) over t
-        xi_sum = np.zeros((K, K), dtype=float)
-        for t in range(T - 1):
-            # log_xi[j,k] proportional to alpha[t,j] + logA[j,k] + logB[t+1,k] + beta[t+1,k]
-            log_xi = (log_alpha[t][:, None] + log_A + logB[t + 1][None, :] + log_beta[t + 1][None, :])
-            log_xi = log_xi - _logsumexp(log_xi.reshape(-1), axis=0)  # normalize globally
-            xi = np.exp(log_xi)
-            xi_sum += xi
+        xi_sum = np.zeros((cfg.n_states, cfg.n_states), dtype=float)
+        for row in range(num_rows - 1):
+            log_xi = (
+                log_alpha[row][:, None]
+                + log_A
+                + logB[row + 1][None, :]
+                + log_beta[row + 1][None, :]
+            )
+            log_xi = log_xi - _logsumexp(log_xi.reshape(-1), axis=0)
+            xi_sum += np.exp(log_xi)
 
-        # M-step: update pi, A, means, vars
-        pi = gamma[0] / (gamma[0].sum() + 1e-12)
+        gamma_sum = gamma.sum(axis=0) + 1e-12
+        pi = gamma[0] / gamma[0].sum()
 
-        A = xi_sum / (xi_sum.sum(axis=1, keepdims=True) + 1e-12)
-        # avoid zeros
-        A = np.clip(A, 1e-8, 1.0)
-        A = A / A.sum(axis=1, keepdims=True)
+        transitions = xi_sum / (xi_sum.sum(axis=1, keepdims=True) + 1e-12)
+        transitions = np.clip(transitions, 1e-8, 1.0)
+        transitions = transitions / transitions.sum(axis=1, keepdims=True)
 
-        # update Gaussian params
-        gamma_sum = gamma.sum(axis=0) + 1e-12  # (K,)
         means = (gamma.T @ X) / gamma_sum[:, None]
 
-        # diag variances
-        vars_new = np.zeros((K, D), dtype=float)
-        for k in range(K):
-            diff = X - means[k]
-            vars_new[k] = (gamma[:, k][:, None] * (diff * diff)).sum(axis=0) / gamma_sum[k]
+        vars_new = np.zeros((cfg.n_states, num_features), dtype=float)
+        for state in range(cfg.n_states):
+            diff = X - means[state]
+            vars_new[state] = (gamma[:, state][:, None] * (diff * diff)).sum(axis=0) / gamma_sum[state]
         vars_diag = np.maximum(vars_new, cfg.reg_covar)
 
-        # convergence
-        if it > 2 and abs(ll - prev_ll) < cfg.tol * (1.0 + abs(prev_ll)):
-            prev_ll = ll
+        n_iter_ran = iteration + 1
+        if iteration > 2 and abs(loglik - prev_loglik) < cfg.tol * (1.0 + abs(prev_loglik)):
+            prev_loglik = loglik
+            converged = True
             break
-        prev_ll = ll
+        prev_loglik = loglik
+
+    num_params = _count_hmm_parameters(cfg.n_states, num_features)
+    aic = 2.0 * num_params - 2.0 * prev_loglik
+    bic = np.log(num_rows) * num_params - 2.0 * prev_loglik
 
     return {
         "pi": pi,
-        "A": A,
+        "A": transitions,
         "means": means,
         "vars_diag": vars_diag,
-        "loglik": prev_ll,
-        "n_iter_ran": it + 1,
+        "loglik": float(prev_loglik),
+        "n_iter_ran": int(n_iter_ran),
+        "converged": converged,
+        "aic": float(aic),
+        "bic": float(bic),
     }
 
 
-def hmm_posterior(X: np.ndarray, params: Dict) -> np.ndarray:
+# -----------------------------
+# Semantic labeling
+# -----------------------------
+
+
+def _weighted_state_mean(values: pd.Series, gamma: np.ndarray) -> np.ndarray:
+    array = values.to_numpy(dtype=float)
+    result = np.full(gamma.shape[1], np.nan, dtype=float)
+    finite_mask = np.isfinite(array)
+    if not finite_mask.any():
+        return result
+
+    weights = gamma[finite_mask]
+    denom = weights.sum(axis=0)
+    valid = denom > 0.0
+    if valid.any():
+        result[valid] = (weights[:, valid].T @ array[finite_mask]) / denom[valid]
+    return result
+
+
+def _zscore_state_metric(values: np.ndarray) -> np.ndarray:
+    mean = np.nanmean(values)
+    std = np.nanstd(values)
+    if not np.isfinite(std) or std == 0.0:
+        return np.zeros_like(values)
+    return (values - mean) / std
+
+
+def _build_state_signature_table(features: pd.DataFrame, gamma: np.ndarray, transitions: np.ndarray) -> pd.DataFrame:
+    signature_data: dict[str, np.ndarray] = {}
+    for column in STATE_SIGNATURE_COLUMNS:
+        if column in features.columns:
+            signature_data[f"mean_{column}"] = _weighted_state_mean(features[column], gamma)
+
+    occupancy = gamma.mean(axis=0)
+    signature_data["occupancy"] = occupancy
+    signature_data["self_transition"] = np.diag(transitions)
+
+    signatures = pd.DataFrame(signature_data)
+    signatures.index = [f"state_{state}" for state in range(gamma.shape[1])]
+    return signatures
+
+
+def _semantic_mapping_from_signatures(signatures: pd.DataFrame) -> tuple[dict[str, int], pd.DataFrame]:
+    """Assign directional semantic labels from latent-state signatures.
+
+    Latent states come from the statistical HMM fit. Semantic labels are added
+    afterward by a deterministic rule over state signatures. The vocabulary is
+    intentionally directional by design:
+    - ``CORE``: lower-vol, neutral or balanced background regime.
+    - ``DRIFT``: orderly positive directional regime.
+    - ``SHOCK``: adverse, stressed, high-vol regime.
+    - ``SURGE``: strong positive expansion regime.
     """
-    Compute posterior gamma[t,k] for each time t.
-    """
-    pi = params["pi"]
-    A = params["A"]
-    means = params["means"]
-    vars_diag = params["vars_diag"]
+    mean_r1 = _zscore_state_metric(signatures["mean_r1"].to_numpy())
+    mean_ts20 = _zscore_state_metric(signatures["mean_TS_20"].to_numpy())
+    mean_ts50 = _zscore_state_metric(signatures["mean_TS_50"].to_numpy())
+    mean_er20 = _zscore_state_metric(signatures["mean_ER_20"].to_numpy())
+    mean_vol20 = _zscore_state_metric(signatures["mean_vol_20"].to_numpy())
+    mean_band_w = _zscore_state_metric(signatures["mean_band_w"].to_numpy())
+    mean_band_pos = _zscore_state_metric(signatures["mean_band_pos"].to_numpy() - 0.5)
+    mean_dist = _zscore_state_metric(signatures["mean_dist_from_mean_vol_units"].to_numpy())
+    occupancy = _zscore_state_metric(signatures["occupancy"].to_numpy())
+    self_transition = _zscore_state_metric(signatures["self_transition"].to_numpy())
 
-    log_pi = np.log(pi + 1e-12)
-    log_A = np.log(A + 1e-12)
-    logB = _log_gaussian_diag(X, means, vars_diag)
-    log_alpha, log_beta, _ = _forward_backward_log(log_pi, log_A, logB)
+    atr_component = _zscore_state_metric(signatures.get("mean_atr_pct", pd.Series(np.zeros(len(signatures)))).to_numpy())
+    ewma_component = _zscore_state_metric(signatures.get("mean_ewma_vol", pd.Series(np.zeros(len(signatures)))).to_numpy())
 
-    log_gamma = log_alpha + log_beta
-    log_gamma = log_gamma - _logsumexp(log_gamma, axis=1)[:, None]
-    gamma = np.exp(log_gamma)
-    return gamma
+    direction = mean_r1 + 0.35 * mean_ts20 + 0.45 * mean_ts50 + 0.20 * mean_band_pos
+    trend_quality = 0.45 * np.abs(mean_ts20) + 0.35 * np.abs(mean_ts50) + 0.55 * mean_er20
+    volatility = mean_vol20 + 0.75 * atr_component + 0.50 * ewma_component + 0.40 * mean_band_w
+    stretch = np.abs(mean_dist)
 
-
-def map_states_to_neutral_regimes(features: pd.DataFrame, gamma: np.ndarray) -> pd.DataFrame:
-    """
-    Map K=4 unnamed HMM states to 4 NEUTRAL regimes:
-      CALM, BASE, STRESS, BURST
-
-    Rules (deterministic):
-      - CALM  = state with smallest sigma (vol proxy)
-      - BASE  = state with largest occupancy (gamma mass)
-      - STRESS = among remaining, state with most negative mean r1 (direction) and relatively high vol
-      - BURST = remaining state
-    """
-    df = features.copy()
-    T, K = gamma.shape
-    if K != 4:
-        raise ValueError(f"Neutral mapping expects K=4, got K={K}")
-
-    # signatures from features (not standardized):
-    # r1: direction, vol_20 / abs(r1): vol proxy
-    cols = ["r1", "vol_20"]
-    Xsig = df[cols].values
-
-    eps = 1e-12
-    wsum = gamma.sum(axis=0) + eps
-    occ = wsum / (wsum.sum() + eps)
-
-    mean_r1 = (gamma.T @ Xsig[:, 0]) / wsum
-    mean_vol = (gamma.T @ Xsig[:, 1]) / wsum
-
-    # CALM = min vol
-    calm = int(np.argmin(mean_vol))
-
-    # BASE = max occupancy (but avoid picking CALM if it's already the dominant state – still OK if it is)
-    base = int(np.argmax(occ))
-
-    remaining = [k for k in range(K) if k not in {calm, base}]
-    if len(remaining) != 2:
-        # in rare tie situations, fall back to unique ordering
-        remaining = [k for k in range(K) if k != calm]
-        base = remaining[int(np.argmax(occ[remaining]))]
-        remaining = [k for k in range(K) if k not in {calm, base}]
-
-    # STRESS = the most negative mean_r1 among remaining; if tie, pick higher vol
-    rem = remaining
-    stress = rem[int(np.lexsort((-mean_vol[rem], mean_r1[rem]))[0])]  # sort by mean_r1 asc, vol desc
-    stress = int(stress)
-
-    burst = int([k for k in range(K) if k not in {calm, base, stress}][0])
-
-    mapping = {
-        "P_CALM_HMM": calm,
-        "P_BASE_HMM": base,
-        "P_STRESS_HMM": stress,
-        "P_BURST_HMM": burst,
-    }
-
-    for name, k in mapping.items():
-        df[name] = gamma[:, k]
-
-    df.attrs["hmm_mapping"] = {
-        "state_signatures": {
-            "mean_r1": mean_r1.tolist(),
-            "mean_vol_20": mean_vol.tolist(),
-            "occupancy": occ.tolist(),
+    label_score_table = pd.DataFrame(
+        {
+            "CORE": -1.10 * volatility - 0.90 * np.abs(direction) - 0.50 * stretch + 0.40 * occupancy + 0.35 * self_transition,
+            "DRIFT": 0.95 * direction + 0.80 * trend_quality - 0.55 * volatility + 0.40 * self_transition - 0.20 * stretch,
+            "SHOCK": -1.00 * direction + 1.05 * volatility - 0.30 * trend_quality + 0.20 * stretch - 0.10 * mean_band_pos,
+            "SURGE": 1.10 * direction + 0.65 * trend_quality + 0.80 * volatility + 0.20 * mean_band_pos + 0.10 * stretch,
         },
-        "mapping": mapping,
-        "labels": {"CALM": calm, "BASE": base, "STRESS": stress, "BURST": burst},
-    }
-    return df
+        index=signatures.index,
+    )
+
+    states = list(range(len(signatures)))
+    best_perm: tuple[str, ...] | None = None
+    best_score = -np.inf
+    for perm in permutations(SEMANTIC_REGIME_LABELS):
+        total = 0.0
+        for state, label in zip(states, perm):
+            total += float(label_score_table.iloc[state][label])
+        if total > best_score:
+            best_score = total
+            best_perm = perm
+
+    assert best_perm is not None
+    semantic_to_state = {label: state for state, label in zip(states, best_perm)}
+    return semantic_to_state, label_score_table
 
 
-def labels_by_state_from_gamma(r1: np.ndarray, gamma: np.ndarray) -> List[str]:
-    T, K = gamma.shape
-    if K != 4:
-        raise ValueError(f"labels_by_state expects K=4, got K={K}")
-
-    eps = 1e-12
-    wsum = gamma.sum(axis=0) + eps
-    occ = wsum / (wsum.sum() + eps)
-
-    mu = (gamma.T @ r1) / wsum
-    diff = r1[:, None] - mu[None, :]
-    var = (gamma * (diff * diff)).sum(axis=0) / wsum
-    sigma = np.sqrt(var)
-
-    stress = np.argsort(sigma)[-2:].tolist()
-    calm = [k for k in range(K) if k not in stress]
-
-    core = int(calm[int(np.argmax(occ[calm]))])
-    drift = int([k for k in calm if k != core][0])
-
-    shock = int(stress[int(np.argmin(mu[stress]))])
-    surge = int([k for k in stress if k != shock][0])
-
-    labels = [""] * K
-    labels[core] = "CORE"
-    labels[drift] = "DRIFT"
-    labels[shock] = "SHOCK"
-    labels[surge] = "SURGE"
-    return labels
+# -----------------------------
+# Public fit/apply API
+# -----------------------------
 
 
-def fit_hmm_pack(features: pd.DataFrame, cfg: HMMConfig = HMMConfig()) -> Dict:
-    feats = _nan_guard(features, HMM_FEATURE_COLS)
-    X = feats[HMM_FEATURE_COLS].values.astype(float)
-    Xs, mu, sd = _standardize(X)
+def fit_hmm_pack(features: pd.DataFrame, cfg: HMMConfig | None = None) -> dict[str, Any]:
+    """Fit the 4-state HMM on the canonical descriptive feature subset.
 
+    The HMM consumes only ``HMM_FEATURE_COLS``. Semantic labels are not learned
+    directly by the HMM; they are assigned afterward from the fitted state
+    signatures.
+    """
+    if cfg is None:
+        cfg = HMMConfig()
+    _validate_hmm_config(cfg)
+
+    usable_features, feature_cols, missing_info = _prepare_hmm_features(features, HMM_FEATURE_COLS)
+    if missing_info["usable_rows"] < cfg.min_rows:
+        raise ValueError(
+            f"Too few usable rows for HMM fitting: {missing_info['usable_rows']} < {cfg.min_rows}"
+        )
+
+    X = usable_features[feature_cols].to_numpy(dtype=float)
+    Xs, mean, std = _standardize(X)
     params = fit_gaussian_hmm(Xs, cfg)
-
-    # For mapping we use posterior (you can use smoothing here, it's training)
     gamma_train = hmm_posterior(Xs, params)
 
-    # We build the mapping once and save it
-    tmp = features.copy()
-    mapped = map_states_to_neutral_regimes(tmp.loc[feats.index], gamma_train)
-    mapping = mapped.attrs["hmm_mapping"]["mapping"]
-    labels_by_state = labels_by_state_from_gamma(feats["r1"].values.astype(float), gamma_train)
+    signatures = _build_state_signature_table(usable_features, gamma_train, params["A"])
+    semantic_to_state, label_score_table = _semantic_mapping_from_signatures(signatures)
+    state_to_semantic = {state: label for label, state in semantic_to_state.items()}
 
-    pack = {
-        "cfg": cfg.__dict__,
-        "feature_cols": HMM_FEATURE_COLS,
-        "standardize": {"mu": mu.tolist(), "sd": sd.tolist()},
-        "params": {
-            "pi": params["pi"],
-            "A": params["A"],
-            "means": params["means"],
-            "vars_diag": params["vars_diag"],
-        },
-        "mapping": mapping,  # P_*_HMM -> state_id
-        "labels_by_state": labels_by_state,
-        "train_info": {"loglik": float(params["loglik"]), "n_iter_ran": int(params["n_iter_ran"])},
+    occupancy = gamma_train.mean(axis=0)
+    self_transition = np.diag(params["A"])
+    diagnostics = {
+        "usable_rows": missing_info["usable_rows"],
+        "dropped_rows": missing_info["dropped_rows"],
+        "usable_start": missing_info["usable_start"],
+        "usable_end": missing_info["usable_end"],
+        "final_loglik": float(params["loglik"]),
+        "n_iter_ran": int(params["n_iter_ran"]),
+        "converged": bool(params["converged"]),
+        "aic": float(params["aic"]),
+        "bic": float(params["bic"]),
+        "state_occupancy": occupancy.tolist(),
+        "min_state_occupancy": float(occupancy.min()),
+        "max_state_occupancy": float(occupancy.max()),
+        "self_transition": self_transition.tolist(),
+        "transition_matrix": np.asarray(params["A"], dtype=float).tolist(),
+        "state_signatures": signatures.reset_index(names="state").to_dict(orient="records"),
+        "label_score_table": label_score_table.reset_index(names="state").to_dict(orient="records"),
+        "effective_sample_count": int(len(usable_features)),
     }
-    return pack
+
+    return {
+        "cfg": cfg.__dict__,
+        "feature_cols": feature_cols,
+        "standardize": {"mu": mean.tolist(), "sd": std.tolist()},
+        "params": {
+            "pi": np.asarray(params["pi"], dtype=float),
+            "A": np.asarray(params["A"], dtype=float),
+            "means": np.asarray(params["means"], dtype=float),
+            "vars_diag": np.asarray(params["vars_diag"], dtype=float),
+        },
+        "semantic_to_state": semantic_to_state,
+        "state_to_semantic": state_to_semantic,
+        "diagnostics": diagnostics,
+    }
 
 
-def apply_hmm_pack(features: pd.DataFrame, pack: Dict, mode: str = "filter") -> Tuple[pd.DataFrame, Dict]:
+def apply_hmm_pack(features: pd.DataFrame, pack: dict[str, Any], mode: HMMMode = "filter") -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Apply a fitted HMM pack to descriptive features.
+
+    Outputs:
+    - ``HMM_STATE_0..K-1``: latent-state posteriors.
+    - ``HMM_DOM``: dominant latent state index.
+    - ``HMM_CONF``: dominant latent-state posterior.
+    - ``P_CORE_HMM`` / ``P_DRIFT_HMM`` / ``P_SHOCK_HMM`` / ``P_SURGE_HMM``:
+      semantic probabilities derived from the post hoc directional mapping.
+    - ``HMM_LABEL``: semantic label with the highest mapped probability.
     """
-    Apply frozen HMM pack to features.
-    mode:
-      - "filter"  : forward-only (NO repaint) recommended for production
-      - "smooth"  : forward-backward (may repaint) useful for research
-    """
-    feats = _nan_guard(features, pack["feature_cols"])
-    X = feats[pack["feature_cols"]].values.astype(float)
+    if mode not in {"filter", "smooth"}:
+        raise ValueError(f"Unsupported HMM mode: {mode}")
 
-    mu = np.array(pack["standardize"]["mu"], dtype=float)
-    sd = np.array(pack["standardize"]["sd"], dtype=float)
-    sd = np.where(sd == 0, 1.0, sd)
-    Xs = (X - mu) / sd
+    feature_cols = tuple(pack["feature_cols"])
+    usable_features, _, missing_info = _prepare_hmm_features(features, feature_cols)
+    if usable_features.empty:
+        raise ValueError("No usable rows remain after dropping NaNs for HMM inference.")
 
-    params = pack["params"]
-    if mode == "smooth":
-        gamma = hmm_posterior(Xs, params)
-    else:
-        gamma = hmm_filter_posterior(Xs, params)
+    X = usable_features[list(feature_cols)].to_numpy(dtype=float)
+    mean = np.asarray(pack["standardize"]["mu"], dtype=float)
+    std = np.asarray(pack["standardize"]["sd"], dtype=float)
+    std = np.where(std == 0.0, 1.0, std)
+    Xs = (X - mean) / std
 
+    params = {
+        "pi": np.asarray(pack["params"]["pi"], dtype=float),
+        "A": np.asarray(pack["params"]["A"], dtype=float),
+        "means": np.asarray(pack["params"]["means"], dtype=float),
+        "vars_diag": np.asarray(pack["params"]["vars_diag"], dtype=float),
+    }
+
+    gamma = hmm_posterior(Xs, params) if mode == "smooth" else hmm_filter_posterior(Xs, params)
     out = features.copy()
 
-    # optional: store raw state probabilities
-    for k in range(int(pack["cfg"]["n_states"])):
-        out.loc[feats.index, f"HMM_STATE_{k}"] = gamma[:, k]
-    out.loc[feats.index, "HMM_CONF"] = gamma.max(axis=1)
-    out.loc[feats.index, "HMM_DOM"] = gamma.argmax(axis=1).astype(int)
+    num_states = int(pack["cfg"]["n_states"])
+    for state in range(num_states):
+        out.loc[usable_features.index, f"HMM_STATE_{state}"] = gamma[:, state]
+    dominant_state = gamma.argmax(axis=1).astype(int)
+    out.loc[usable_features.index, "HMM_CONF"] = gamma.max(axis=1)
+    out.loc[usable_features.index, "HMM_DOM"] = dominant_state
 
-    # Use frozen mapping from pack (cast to builtin int for JSON safety)
-    allowed_mapping = {"P_CALM_HMM", "P_BASE_HMM", "P_STRESS_HMM", "P_BURST_HMM"}
-    raw_mapping = pack.get("mapping", {})
-    mapping = {name: int(k) for name, k in raw_mapping.items() if name in allowed_mapping}
-    for name, k in mapping.items():
-        out.loc[feats.index, name] = gamma[:, k]
+    semantic_to_state = {label: int(state) for label, state in pack["semantic_to_state"].items()}
+    semantic_series = {}
+    for label in SEMANTIC_REGIME_LABELS:
+        column_name = f"P_{label}_HMM"
+        state = semantic_to_state[label]
+        probabilities = gamma[:, state]
+        out.loc[usable_features.index, column_name] = probabilities
+        semantic_series[label] = probabilities
+
+    semantic_probability_frame = pd.DataFrame(semantic_series, index=usable_features.index)
+    out.loc[usable_features.index, "HMM_LABEL"] = semantic_probability_frame.idxmax(axis=1)
 
     meta = {
         "cfg": pack["cfg"],
-        "feature_cols": pack["feature_cols"],
-        "standardize": pack["standardize"],
-        "mapping": mapping,
-        "labels_by_state": pack.get("labels_by_state", []),
+        "feature_cols": list(feature_cols),
         "mode": mode,
-        "train_info": pack.get("train_info", {}),
+        "mode_description": (
+            "filter uses only observations available up to each timestamp"
+            if mode == "filter"
+            else "smooth uses the full sample and can repaint historical posteriors"
+        ),
+        "semantic_to_state": semantic_to_state,
+        "state_to_semantic": pack["state_to_semantic"],
+        "diagnostics": pack.get("diagnostics", {}),
+        "inference_rows": int(len(usable_features)),
+        "dropped_rows": int(missing_info["dropped_rows"]),
+        "usable_start": missing_info["usable_start"],
+        "usable_end": missing_info["usable_end"],
+        "train_info": {
+            "loglik": pack.get("diagnostics", {}).get("final_loglik"),
+            "n_iter_ran": pack.get("diagnostics", {}).get("n_iter_ran"),
+            "converged": pack.get("diagnostics", {}).get("converged"),
+        },
         "params": {
-            "pi": np.asarray(pack["params"]["pi"], dtype=float).tolist(),
-            "A":  np.asarray(pack["params"]["A"], dtype=float).tolist(),
+            "pi": params["pi"].tolist(),
+            "A": params["A"].tolist(),
         },
     }
-
     return out, meta
 
 
-def save_hmm_pack(pack: Dict, path: str) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def save_hmm_pack(pack: dict[str, Any], path: str) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     joblib.dump(pack, path)
 
 
-def load_hmm_pack(path: str) -> Dict:
+def load_hmm_pack(path: str) -> dict[str, Any]:
     return joblib.load(path)

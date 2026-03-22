@@ -70,6 +70,9 @@ buttons:
       source ../.venv/bin/activate
       python src/crawler/query.py
 
+      python src/run_onchain_features.py
+      python src/run_exposure.py
+
   - id: statistics-daily-run
     label: Statistics - daily run
     cwd: statistics
@@ -101,19 +104,14 @@ buttons:
       python src/util/print_features_range.py \
         $start \
         $end \
-        --path out/btc/features.json >> daily_reading.txt
+        --path out/features.json >> daily_reading.txt
 
       python src/util/print_features_range.py \
         $start \
         $end \
-        --path out/btc/onchain_features.json >> daily_reading.txt
+        --path out/onchain_features.json >> daily_reading.txt
 
-      python src/util/safe_touch_probabilities.py \
-        --price-json data/daily_price.json \
-        --features-json out/btc/features.json \
-        --date $end \
-        --days 10 \
-        --sims 20000 >> daily_reading.txt
+      python src/util/safe_touch_probabilities.py --date $end >> daily_reading.txt
 
   - id: strategies-candles
     label: Strategies - candles similarities

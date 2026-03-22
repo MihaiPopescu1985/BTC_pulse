@@ -1,102 +1,189 @@
+"""Load and validate BTC daily OHLCV data from the repository data directory.
+
+The default input file lives at ``../data/daily_price.json`` relative to the
+``src`` folder. The expected JSON payload is a non-empty array of objects with
+this shape:
+
+    {
+        "timestamp": "2017-08-17",
+        "open": 4261.48,
+        "high": 4485.39,
+        "low": 4200.74,
+        "close": 4285.08,
+        "volume": 795.150377
+    }
+
+Each record must contain a ``timestamp`` in ``YYYY-MM-DD`` format. OHLC fields
+must be strictly positive. ``volume`` may be zero, but it must remain finite and
+non-negative.
+"""
+
+from __future__ import annotations
+
 import json
+from datetime import datetime
 from pathlib import Path
+from typing import Any
+
 import pandas as pd
 
-def load_daily_price_json(path: str) -> pd.DataFrame:
-    path = Path(path)
-    raw = json.loads(path.read_text(encoding="utf-8"))
+from src.path_config import DEFAULT_PRICE_JSON_PATH
 
-    # Caz 1: dict { "YYYY-MM-DD": price, ... }
-    if isinstance(raw, dict):
-        # poate fi direct date->price, sau nested
-        # încercăm să găsim un mapping de date
-        if all(isinstance(k, str) for k in raw.keys()):
-            # dacă valorile sunt numere
-            if all(isinstance(v, (int, float)) for v in raw.values()):
-                df = pd.DataFrame({"date": list(raw.keys()), "close": list(raw.values())})
-            else:
-                # dacă e nested, caută un key evident
-                for key in ["prices", "data", "close", "series", "daily"]:
-                    if key in raw and isinstance(raw[key], (list, dict)):
-                        raw = raw[key]
-                        return load_daily_price_json_like(raw)
-                raise ValueError("Dict JSON nerecunoscut. Trimite un eșantion din fișier.")
-        else:
-            raise ValueError("Dict JSON cu chei non-string. Trimite un eșantion.")
-        return finalize_df(df)
-
-    # Caz 2: listă de înregistrări
-    if isinstance(raw, list):
-        return load_daily_price_json_like(raw)
-
-    raise ValueError(f"Tip JSON nerecunoscut: {type(raw)}")
+DEFAULT_DAILY_PRICE_PATH = str(DEFAULT_PRICE_JSON_PATH)
+TIMESTAMP_FORMAT = "%Y-%m-%d"
+OHLC_FIELDS: tuple[str, ...] = ("open", "high", "low", "close")
+VOLUME_FIELD = "volume"
+PRICE_FIELDS: tuple[str, ...] = (*OHLC_FIELDS, VOLUME_FIELD)
+REQUIRED_FIELDS: tuple[str, ...] = ("timestamp", *PRICE_FIELDS)
 
 
-def load_daily_price_json_like(obj) -> pd.DataFrame:
-    # obj poate fi list sau dict (ex: {"data":[...]})
-    if isinstance(obj, dict):
-        for key in ["prices", "data", "close", "series", "daily"]:
-            if key in obj:
-                return load_daily_price_json_like(obj[key])
-        raise ValueError("Dict nested nerecunoscut. Trimite un eșantion.")
+def load_daily_price_json(path: str = DEFAULT_DAILY_PRICE_PATH) -> pd.DataFrame:
+    """Load validated BTC daily OHLCV data into a timestamp-indexed DataFrame.
 
-    if not isinstance(obj, list) or len(obj) == 0:
-        raise ValueError("Lista e goală sau format invalid.")
+    Parameters:
+        path: Path to the JSON file. Defaults to ``../data/daily_price.json``
+            relative to the repository ``statistics/src`` folder.
 
-    first = obj[0]
+    Returns:
+        A ``pandas.DataFrame`` indexed by ``timestamp`` with numeric ``open``,
+        ``high``, ``low``, ``close``, and ``volume`` columns.
 
-    # Caz 2.1: listă de perechi [timestamp, price]
-    if isinstance(first, list) and len(first) >= 2 and isinstance(first[1], (int, float)):
-        df = pd.DataFrame(obj, columns=["date", "close"] + [f"extra_{i}" for i in range(len(first)-2)])
-
-    # Caz 2.2: listă de dict-uri {date:..., close/price:...}
-    elif isinstance(first, dict):
-        # detectează numele coloanelor
-        # date-like keys
-        date_keys = ["date", "time", "timestamp", "t", "day"]
-        price_keys = ["close", "price", "p", "value", "c"]
-
-        dk = next((k for k in date_keys if k in first), None)
-        pk = next((k for k in price_keys if k in first), None)
-
-        if dk is None or pk is None:
-            raise ValueError(f"Nu găsesc chei date/price în dict. Chei disponibile: {list(first.keys())}")
-
-        df = pd.DataFrame({
-            "date": [row.get(dk) for row in obj],
-            "close": [row.get(pk) for row in obj],
-        })
-
-    else:
-        raise ValueError(f"Elemente listă nerecunoscute: {type(first)}")
-
-    return finalize_df(df)
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the JSON payload does not match the expected schema.
+    """
+    payload = _read_daily_price_file(path)
+    records = _validate_daily_price_payload(payload, path)
+    return _build_daily_price_frame(records)
 
 
-def finalize_df(df: pd.DataFrame) -> pd.DataFrame:
-    # Parse date robust (acceptă: YYYY-MM-DD, epoch sec/ms, ISO)
-    df = df.copy()
-
-    # dacă date e numeric (epoch)
-    if pd.api.types.is_numeric_dtype(df["date"]):
-        # heuristica: > 1e12 -> ms
-        s = df["date"].astype("int64")
-        unit = "ms" if s.median() > 10**12 else "s"
-        df["date"] = pd.to_datetime(df["date"], unit=unit, utc=True).dt.date
-    else:
-        df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce").dt.date
-
-    df["close"] = pd.to_numeric(df["close"], errors="coerce")
-    df = df.dropna(subset=["date", "close"]).sort_values("date").drop_duplicates("date", keep="last")
-
-    # index pe date pentru rolling
-    df = df.set_index(pd.to_datetime(df["date"])).drop(columns=["date"])
-    df.index.name = "date"
-    return df
+def load_daily_price_timestamps(path: str = DEFAULT_DAILY_PRICE_PATH) -> pd.DatetimeIndex:
+    """Return the validated timestamp index from the BTC daily price file."""
+    return load_daily_price_json(path).index
 
 
-if __name__ == "__main__":
-    df = load_daily_price_json("daily_price.json")
-    print(df.head(10))
-    print(df.tail(10))
-    print("Rows:", len(df), "Start:", df.index.min().date(), "End:", df.index.max().date())
+def load_daily_price_open(path: str = DEFAULT_DAILY_PRICE_PATH) -> pd.Series:
+    """Return the validated ``open`` series from the BTC daily price file."""
+    return _load_daily_price_field(path, "open")
+
+
+def load_daily_price_high(path: str = DEFAULT_DAILY_PRICE_PATH) -> pd.Series:
+    """Return the validated ``high`` series from the BTC daily price file."""
+    return _load_daily_price_field(path, "high")
+
+
+def load_daily_price_low(path: str = DEFAULT_DAILY_PRICE_PATH) -> pd.Series:
+    """Return the validated ``low`` series from the BTC daily price file."""
+    return _load_daily_price_field(path, "low")
+
+
+def load_daily_price_close(path: str = DEFAULT_DAILY_PRICE_PATH) -> pd.Series:
+    """Return the validated ``close`` series from the BTC daily price file."""
+    return _load_daily_price_field(path, "close")
+
+
+def load_daily_price_volume(path: str = DEFAULT_DAILY_PRICE_PATH) -> pd.Series:
+    """Return the validated ``volume`` series from the BTC daily price file."""
+    return _load_daily_price_field(path, "volume")
+
+
+def _load_daily_price_field(path: str, field_name: str) -> pd.Series:
+    frame = load_daily_price_json(path)
+    return frame[field_name]
+
+
+def _read_daily_price_file(path: str) -> Any:
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise FileNotFoundError(f"Daily price file not found: {file_path}")
+
+    try:
+        return json.loads(file_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {file_path}: {exc.msg} at line {exc.lineno}, column {exc.colno}.") from exc
+
+
+def _validate_daily_price_payload(payload: Any, path: str) -> list[dict[str, Any]]:
+    if not isinstance(payload, list):
+        raise ValueError(
+            f"Daily price payload in {path} must be a JSON array of objects, got {type(payload).__name__}."
+        )
+    if not payload:
+        raise ValueError(f"Daily price payload in {path} is empty.")
+
+    validated_rows: list[dict[str, Any]] = []
+    seen_timestamps: set[str] = set()
+    for index, row in enumerate(payload):
+        validated_row = _validate_daily_price_row(row, index)
+        timestamp = validated_row["timestamp"]
+        if timestamp in seen_timestamps:
+            raise ValueError(f"Duplicate timestamp '{timestamp}' found at entry {index}.")
+        seen_timestamps.add(timestamp)
+        validated_rows.append(validated_row)
+
+    return validated_rows
+
+
+def _validate_daily_price_row(row: Any, index: int) -> dict[str, Any]:
+    if not isinstance(row, dict):
+        raise ValueError(f"Entry {index} must be a JSON object, got {type(row).__name__}.")
+
+    missing_fields = [field for field in REQUIRED_FIELDS if field not in row]
+    if missing_fields:
+        raise ValueError(f"Entry {index} is missing required fields: {', '.join(missing_fields)}.")
+
+    validated_row: dict[str, Any] = {
+        "timestamp": _validate_timestamp(row["timestamp"], index),
+    }
+    for field_name in OHLC_FIELDS:
+        validated_row[field_name] = _validate_positive_number(row[field_name], field_name, index)
+    validated_row[VOLUME_FIELD] = _validate_non_negative_number(row[VOLUME_FIELD], VOLUME_FIELD, index)
+
+    return validated_row
+
+
+def _validate_timestamp(value: Any, index: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"Entry {index} field 'timestamp' must be a string in {TIMESTAMP_FORMAT} format.")
+
+    try:
+        parsed = datetime.strptime(value, TIMESTAMP_FORMAT)
+    except ValueError as exc:
+        raise ValueError(
+            f"Entry {index} field 'timestamp' must match {TIMESTAMP_FORMAT}; got {value!r}."
+        ) from exc
+
+    if parsed.strftime(TIMESTAMP_FORMAT) != value:
+        raise ValueError(
+            f"Entry {index} field 'timestamp' must be normalized as {TIMESTAMP_FORMAT}; got {value!r}."
+        )
+
+    return value
+
+
+def _validate_positive_number(value: Any, field_name: str, index: int) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"Entry {index} field '{field_name}' must be a positive number, got {value!r}.")
+    if value <= 0:
+        raise ValueError(f"Entry {index} field '{field_name}' must be greater than 0, got {value!r}.")
+    return float(value)
+
+
+def _validate_non_negative_number(value: Any, field_name: str, index: int) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"Entry {index} field '{field_name}' must be a finite non-negative number, got {value!r}.")
+    numeric_value = float(value)
+    if not pd.notna(numeric_value):
+        raise ValueError(f"Entry {index} field '{field_name}' must be finite, got {value!r}.")
+    if numeric_value < 0:
+        raise ValueError(f"Entry {index} field '{field_name}' must be greater than or equal to 0, got {value!r}.")
+    return numeric_value
+
+
+def _build_daily_price_frame(records: list[dict[str, Any]]) -> pd.DataFrame:
+    frame = pd.DataFrame.from_records(records)
+    frame["timestamp"] = pd.to_datetime(frame["timestamp"], format=TIMESTAMP_FORMAT)
+    frame = frame.sort_values("timestamp")
+    frame = frame.set_index("timestamp")
+    frame.index.name = "timestamp"
+    return frame

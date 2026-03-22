@@ -1,48 +1,43 @@
 #!/usr/bin/env python3
-"""
-run_onchain_features.py
+"""Build descriptive BTC on-chain features from the repository data directory.
 
-Builds a small, interpretable on-chain feature set from:
-- daily_amounts.json  : { "YYYY-MM-DD": <total_btc_transferred_float>, ... }
-- daily_tx_size.json  : [ ["YYYY-MM-DD", b0, b1, ..., bN], ... ]  (counts per size bucket)
+Inputs default to the BTC-specific repository layout relative to ``statistics/src``:
+- ``../data/daily_amounts.json``
+- ``../data/daily_tx_size.json``
 
-Outputs:
-- out/onchain_features.json with:
-  - dates: list[str]
-  - series: dict[str, list[float|None]]
-  - meta: basic info
+Output defaults to:
+- ``../out/onchain_features.json``
 
-Design goals:
-- No modeling, no thresholds-as-signals.
-- Robust to missing days / partial overlap.
-- Keeps alignment by date so you can merge into the dashboard later.
-
-Usage:
-  python src/run_onchain_features.py \
-    --amounts daily_amounts.json \
-    --txsize daily_tx_size.json \
-    --asset btc
+The runner stays descriptive only. It does not fit models or emit trading
+signals.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import json
 import math
+from pathlib import Path
+import sys
 from typing import Dict, List, Optional
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.path_config import DEFAULT_AMOUNTS_JSON_PATH, DEFAULT_ONCHAIN_FEATURES_JSON_PATH, DEFAULT_TX_SIZE_JSON_PATH
 
 
 def _load_amounts(path: Path) -> Dict[str, float]:
     obj = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(obj, dict):
-        raise ValueError(f"{path} must be a JSON object/dict of date->amount.")
+        raise ValueError(f"{path} must be a JSON object mapping date to amount.")
     out: Dict[str, float] = {}
-    for k, v in obj.items():
-        if v is None:
+    for key, value in obj.items():
+        if value is None:
             continue
         try:
-            out[str(k)] = float(v)
+            out[str(key)] = float(value)
         except Exception:
             continue
     return out
@@ -57,170 +52,144 @@ def _load_tx_size(path: Path) -> Dict[str, List[float]]:
         if not isinstance(row, list) or len(row) < 2:
             continue
         date = str(row[0])
-        vals: List[float] = []
+        values: List[float] = []
         ok = True
-        for x in row[1:]:
+        for item in row[1:]:
             try:
-                vals.append(float(x))
+                values.append(float(item))
             except Exception:
                 ok = False
                 break
         if ok:
-            out[date] = vals
+            out[date] = values
     return out
 
 
-def _sorted_dates(*dicts) -> List[str]:
-    keys = set()
-    for d in dicts:
-        keys.update(d.keys())
+def _sorted_dates(*dicts: dict[str, object]) -> List[str]:
+    keys: set[str] = set()
+    for mapping in dicts:
+        keys.update(mapping.keys())
     return sorted(keys)
 
 
-def _rolling_zscore(x: List[Optional[float]], window: int) -> List[Optional[float]]:
-    """Trailing rolling z-score. For first (window-1) points returns None."""
-    out: List[Optional[float]] = [None] * len(x)
-    buf: List[float] = []
-    for i, v in enumerate(x):
-        if v is None or not math.isfinite(v):
-            buf.append(float("nan"))
+def _rolling_zscore(values: List[Optional[float]], window: int) -> List[Optional[float]]:
+    out: List[Optional[float]] = [None] * len(values)
+    buffer: List[float] = []
+    for index, value in enumerate(values):
+        if value is None or not math.isfinite(value):
+            buffer.append(float("nan"))
         else:
-            buf.append(float(v))
+            buffer.append(float(value))
 
-        if i + 1 < window:
+        if index + 1 < window:
             continue
 
-        w = buf[i + 1 - window : i + 1]
-        w = [t for t in w if math.isfinite(t)]
-        if len(w) < max(10, window // 5):
-            out[i] = None
+        window_values = buffer[index + 1 - window : index + 1]
+        window_values = [item for item in window_values if math.isfinite(item)]
+        if len(window_values) < max(10, window // 5):
+            out[index] = None
             continue
 
-        mu = sum(w) / len(w)
-        var = sum((t - mu) ** 2 for t in w) / max(1, (len(w) - 1))
-        sd = math.sqrt(var) if var > 0 else 0.0
-        if sd == 0.0:
-            out[i] = 0.0
+        mean = sum(window_values) / len(window_values)
+        variance = sum((item - mean) ** 2 for item in window_values) / max(1, len(window_values) - 1)
+        std = math.sqrt(variance) if variance > 0 else 0.0
+        if std == 0.0:
+            out[index] = 0.0
         else:
-            out[i] = (float(v) - mu) / sd if (v is not None and math.isfinite(v)) else None
+            out[index] = (float(value) - mean) / std if (value is not None and math.isfinite(value)) else None
     return out
 
 
-def _pct_change(x: List[Optional[float]]) -> List[Optional[float]]:
-    out: List[Optional[float]] = [None] * len(x)
+def _pct_change(values: List[Optional[float]]) -> List[Optional[float]]:
+    out: List[Optional[float]] = [None] * len(values)
     prev: Optional[float] = None
-    for i, v in enumerate(x):
-        if v is None or not math.isfinite(v):
-            out[i] = None
+    for index, value in enumerate(values):
+        if value is None or not math.isfinite(value):
+            out[index] = None
             continue
         if prev is None or prev == 0 or not math.isfinite(prev):
-            out[i] = None
+            out[index] = None
         else:
-            out[i] = (v / prev) - 1.0
-        prev = v
+            out[index] = (value / prev) - 1.0
+        prev = value
     return out
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--asset", default="btc")
-    ap.add_argument("--amounts", type=Path, default=Path("data") / "daily_amounts.json")
-    ap.add_argument("--txsize", type=Path, default=Path("data") / "daily_tx_size.json")
-    ap.add_argument(
-        "--out",
-        type=Path,
-        default=None,
-        help="Optional output path. Defaults to out/<asset>/onchain_features.json.",
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for descriptive BTC on-chain features."""
+    parser = argparse.ArgumentParser(
+        description="Build descriptive BTC on-chain features and export them to ../out/onchain_features.json by default.",
     )
-    ap.add_argument("--zwin", type=int, default=365, help="Rolling window for z-scores (days).")
-
-    ap.add_argument(
-        "--whale_mode",
+    parser.add_argument("--amounts-json", type=Path, default=DEFAULT_AMOUNTS_JSON_PATH, help="Default: ../data/daily_amounts.json")
+    parser.add_argument("--tx-size-json", type=Path, default=DEFAULT_TX_SIZE_JSON_PATH, help="Default: ../data/daily_tx_size.json")
+    parser.add_argument("--out-json", type=Path, default=DEFAULT_ONCHAIN_FEATURES_JSON_PATH, help="Default: ../out/onchain_features.json")
+    parser.add_argument("--zwin", type=int, default=365, help="Rolling window for z-scores in days.")
+    parser.add_argument(
+        "--whale-mode",
         choices=["last_bucket", "last_two_buckets"],
         default="last_bucket",
         help=(
-            "How to define WHALE_TX from tx-size buckets. "
-            "last_bucket = use the last column; "
-            "last_two_buckets = sum of last two columns."
+            "How to define ONCHAIN_TX_WHALE from tx-size buckets. "
+            "last_bucket uses the final bucket only; last_two_buckets sums the final two buckets."
         ),
     )
+    return parser.parse_args()
 
-    args = ap.parse_args()
-    if args.out is None:
-        args.out = Path("out") / args.asset / "onchain_features.json"
 
-    amounts = _load_amounts(args.amounts)
-    tx = _load_tx_size(args.txsize)
-
+def main() -> None:
+    """Build and export descriptive BTC on-chain features."""
+    args = parse_args()
+    amounts = _load_amounts(args.amounts_json)
+    tx = _load_tx_size(args.tx_size_json)
     dates = _sorted_dates(amounts, tx)
 
-    # --- Amount series ---
-    total_amount: List[Optional[float]] = [amounts.get(d) for d in dates]
-
-    vol_log: List[Optional[float]] = [
-        math.log(max(1e-12, v)) if (v is not None and v > 0) else None for v in total_amount
-    ]
+    total_amount: List[Optional[float]] = [amounts.get(date) for date in dates]
+    vol_log: List[Optional[float]] = [math.log(max(1e-12, value)) if (value is not None and value > 0) else None for value in total_amount]
     vol_z = _rolling_zscore(vol_log, args.zwin)
 
-    # --- Tx bucket aggregation ---
     whale_tx: List[Optional[float]] = []
     mid_tx: List[Optional[float]] = []
     small_tx: List[Optional[float]] = []
 
-    for d in dates:
-        row = tx.get(d)
-        if not row:
-            whale_tx.append(None)
-            mid_tx.append(None)
-            small_tx.append(None)
-            continue
-
-        n = len(row)
-        if n < 2:
+    for date in dates:
+        row = tx.get(date)
+        if not row or len(row) < 2:
             whale_tx.append(None)
             mid_tx.append(None)
             small_tx.append(None)
             continue
 
         last = float(row[-1])
-        second_last = float(row[-2]) if n >= 2 else 0.0
-        rest = row[:-2] if n >= 2 else []
+        second_last = float(row[-2]) if len(row) >= 2 else 0.0
+        rest = row[:-2] if len(row) >= 2 else []
 
-        if args.whale_mode == "last_two_buckets" and n >= 3:
-            w = last + second_last
-            m = float(row[-3])
-            s = float(sum(row[:-3]))
+        if args.whale_mode == "last_two_buckets" and len(row) >= 3:
+            whale_value = last + second_last
+            mid_value = float(row[-3])
+            small_value = float(sum(row[:-3]))
         else:
-            w = last
-            m = second_last
-            s = float(sum(rest)) if rest else 0.0
+            whale_value = last
+            mid_value = second_last
+            small_value = float(sum(rest)) if rest else 0.0
 
-        whale_tx.append(w)
-        mid_tx.append(m)
-        small_tx.append(s)
+        whale_tx.append(whale_value)
+        mid_tx.append(mid_value)
+        small_tx.append(small_value)
 
     whale_share: List[Optional[float]] = []
     dominance: List[Optional[float]] = []
-
-    for w, m, s in zip(whale_tx, mid_tx, small_tx):
-        if w is None or m is None or s is None:
+    for whale_value, mid_value, small_value in zip(whale_tx, mid_tx, small_tx):
+        if whale_value is None or mid_value is None or small_value is None:
             whale_share.append(None)
             dominance.append(None)
             continue
-        denom = w + m + s
-        whale_share.append((w / denom) if denom > 0 else None)
-        dominance.append(((w + m) / s) if s > 0 else None)
+        denom = whale_value + mid_value + small_value
+        whale_share.append((whale_value / denom) if denom > 0 else None)
+        dominance.append(((whale_value + mid_value) / small_value) if small_value > 0 else None)
 
-    dom_log: List[Optional[float]] = [
-        math.log(max(1e-12, v)) if (v is not None and v > 0) else None for v in dominance
-    ]
+    dom_log: List[Optional[float]] = [math.log(max(1e-12, value)) if (value is not None and value > 0) else None for value in dominance]
     dom_z = _rolling_zscore(dom_log, args.zwin)
     whale_share_z = _rolling_zscore(whale_share, args.zwin)
-
-    # Optional daily changes (good for exploration)
-    vol_chg = _pct_change(total_amount)
-    whale_chg = _pct_change(whale_tx)
-    dom_chg = _pct_change(dominance)
 
     out = {
         "dates": dates,
@@ -235,26 +204,22 @@ def main() -> None:
             "ONCHAIN_VOL_Z": vol_z,
             "ONCHAIN_DOM_Z": dom_z,
             "ONCHAIN_WHALE_SHARE_Z": whale_share_z,
-            "ONCHAIN_AMOUNT_PCT": vol_chg,
-            "ONCHAIN_WHALE_TX_PCT": whale_chg,
-            "ONCHAIN_DOM_PCT": dom_chg,
+            "ONCHAIN_AMOUNT_PCT": _pct_change(total_amount),
+            "ONCHAIN_WHALE_TX_PCT": _pct_change(whale_tx),
+            "ONCHAIN_DOM_PCT": _pct_change(dominance),
         },
         "meta": {
-            "source_amounts": str(args.amounts),
-            "source_txsize": str(args.txsize),
+            "asset": "BTC",
+            "source_amounts": str(args.amounts_json),
+            "source_tx_size": str(args.tx_size_json),
             "zwin": int(args.zwin),
             "whale_mode": args.whale_mode,
-            "notes": (
-                "whale/mid/small are derived from tx-size buckets without assuming exact boundaries. "
-                "If your last column is 1000+ BTC and second last is 100-1000 BTC, whale_mode=last_bucket is correct. "
-                "If your last two columns together represent >1000 BTC, use whale_mode=last_two_buckets."
-            ),
         },
     }
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(out, indent=2), encoding="utf-8")
-    print(f"Wrote {args.out} with {len(dates)} rows and {len(out['series'])} series.")
+    args.out_json.parent.mkdir(parents=True, exist_ok=True)
+    args.out_json.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    print(f"Wrote {args.out_json} with {len(dates)} rows and {len(out['series'])} series.")
 
 
 if __name__ == "__main__":
