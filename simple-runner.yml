@@ -79,7 +79,7 @@ buttons:
     script: |
       #!/bin/bash
       # Remove the old generated file to start clean
-      rm daily_reading.txt
+      rm out/daily_reading.txt
      
       # Clean the console
       echo "Press ENTER to continue."
@@ -104,14 +104,16 @@ buttons:
       python src/util/print_features_range.py \
         $start \
         $end \
-        --path out/features.json >> daily_reading.txt
+        --path out/features.json >> out/daily_reading.txt
 
       python src/util/print_features_range.py \
         $start \
         $end \
-        --path out/onchain_features.json >> daily_reading.txt
+        --path out/onchain_features.json >> out/daily_reading.txt
 
-      python src/util/safe_touch_probabilities.py --date $end >> daily_reading.txt
+      python src/safe_interpreter.py
+
+      python src/util/safe_touch_probabilities.py --date $end >> out/daily_reading.txt
 
   - id: strategies-candles
     label: Strategies - candles similarities
