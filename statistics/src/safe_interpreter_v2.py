@@ -2027,7 +2027,7 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Interpret SAFE 3.0 features and historical analogs")
     p.add_argument("--features", required=False, help="Path to features.json", default="/home/mihai/Documents/BTC_pulse/statistics/out/features.json")
     p.add_argument("--onchain", required=False, help="Path to onchain_features.json", default="/home/mihai/Documents/BTC_pulse/statistics/out/onchain_features.json")
-    p.add_argument("--out-dir", default="/home/mihai/Documents/BTC_pulse/statistics/out/safe_interpreter_out", help="Output directory")
+    p.add_argument("--out-dir", default="/home/mihai/Documents/BTC_pulse/statistics/out/safe_interpreter_out_v2", help="Output directory")
     p.add_argument("--seq-len", type=int, default=5, help="Candle sequence length")
     p.add_argument("--top-k", type=int, default=20, help="Top matches per engine")
     p.add_argument("--min-gap", type=int, default=20, help="Minimum row gap from current state")
