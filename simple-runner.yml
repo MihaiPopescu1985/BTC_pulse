@@ -117,6 +117,16 @@ buttons:
 
       python src/safe_interpreter_v2.py
 
+  - id: statistics-features-viewer
+    label: Statistics - features viewer
+    cwd: statistics
+    script: |
+      #!/bin/bash
+
+      source ../.venv/bin/activate
+
+      python src/util/features_viewer.py
+
   - id: strategies-candles
     label: Strategies - candles similarities
     cwd: strategies
