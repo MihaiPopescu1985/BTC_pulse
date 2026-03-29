@@ -1,492 +1,922 @@
 <!doctype html>
-<html lang="ro">
+<html lang="en">
 
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>BTC – Dashboard (Regime / Hazard / Exposure)</title>
+  <title>BTC SAFE Dashboard</title>
   <style>
-    html,
-    body {
-      overflow-y: auto;
-
-      height: 100%;
-      margin: 0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      background: #0b0e12;
-      color: #e8eefc;
+    :root {
+      color-scheme: dark;
+      --bg: #0a0d12;
+      --panel: #121822;
+      --panel-2: #18202c;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #ecf1f8;
+      --muted: #9cadc4;
+      --accent: #56b6ff;
+      --green: #2ecc71;
+      --red: #ff5c6c;
     }
 
-    #wrap {
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
       height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      overflow: hidden;
+    }
+
+    #app {
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      height: 100%;
+    }
+
+    #sidebar {
+      border-right: 1px solid var(--border);
+      background: linear-gradient(180deg, #111722, #0e141d);
+      padding: 18px 16px;
+      overflow: auto;
+    }
+
+    #main {
       display: flex;
       flex-direction: column;
+      min-width: 0;
       min-height: 0;
     }
 
-    #desc {
-      flex: 0 0 auto;
-      max-width: 980px;
-      width: calc(100% - 24px);
-      margin: 10px auto 0;
-      color: #cbd5e1;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
-      padding: 10px 12px;
-      max-height: 190px;
-      /* important: nu “mănâncă” ecranul */
-      overflow: auto;
-      /* scroll intern dacă e mult text */
+    .title {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0 0 8px;
     }
 
-    #chart {
+    .subtle {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .section {
+      margin-top: 18px;
+    }
+
+    .section label,
+    .section-title {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #c8d4e7;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"],
+    select,
+    button {
       width: 100%;
-      height: 90vh;
-      min-height: 680px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
     }
 
-    code {
-      color: #ffd27a;
+    input[type="text"] {
+      padding: 10px 12px;
+    }
+
+    select {
+      height: 430px;
+      padding: 8px;
+    }
+
+    button {
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+
+    button:hover {
+      background: var(--panel-2);
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .button-row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .radio-group,
+    .tab-group {
+      display: grid;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--panel);
+    }
+
+    .radio-group label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      font-size: 14px;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: normal;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .tab-group {
+      grid-template-columns: 1fr 1fr;
+      padding: 6px;
+    }
+
+    .tab-button {
+      border-radius: 10px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .tab-button.active {
+      background: rgba(86, 182, 255, 0.14);
+      color: #dff2ff;
+      border-color: rgba(86, 182, 255, 0.25);
+    }
+
+    #topbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    #status {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #chartArea {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+    }
+
+    #charts {
+      display: grid;
+      gap: 14px;
+    }
+
+    .chart-card {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.015));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    .chart-header {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 700;
+      color: #d9e5f6;
+    }
+
+    .chart {
+      width: 100%;
+      height: 520px;
+    }
+
+    .chart.stacked {
+      height: 320px;
+    }
+
+    .empty {
+      display: grid;
+      place-items: center;
+      min-height: 380px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px dashed var(--border);
+      border-radius: 16px;
+      color: var(--muted);
+      text-align: center;
+      padding: 24px;
+      line-height: 1.5;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(86, 182, 255, 0.12);
+      color: #cdeaff;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .hidden {
+      display: none !important;
     }
   </style>
 </head>
 
 <body>
-  <div id="wrap">
-
-    <h2 style="margin:10px 0 8px; font-size:14px; font-weight:700; color:#e5e7eb; letter-spacing:0.2px;">BTC — Regime /
-      Hazard / Exposure (SAFE + On-chain)</h2>
-    <div id="chart"></div>
-  </div>
-
-
-
-  <div style="margin: 14px 0 22px;">
-    <details id="desc" open>
-      <summary style="cursor:pointer; font-weight:700;">Reading / interpretare <span id="assetBadge"
-          style="display:inline-block; margin-left:10px; padding:2px 8px; border:1px solid rgba(255,255,255,0.18); border-radius:999px; font-size:12px; color:#a9b4cc;">BTC</span>
-      </summary>
-      <div style="margin-top:10px; line-height:1.5;">
-        <h3 style="margin: 6px 0 8px;">Indicatori și interpretare (SAFE + Scores + AGGR)</h3>
-        <p style="margin: 6px 0;">
-          <b>Regime (HMM_STATE_0..3)</b>:
-          indică starea dominantă a pieței (trend sau lateral). Ne interesează schimbările de regim și persistența, nu
-          fiecare fluctuație mică.
-        </p>
-
-        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.10); margin: 10px 0;" />
-
-        <p style="margin: 6px 0;">
-          <b>Hazard</b>:
-        </p>
-        <ul style="margin: 6px 0 10px 18px;">
-          <li><b>P_Corr_10D (correction probability in 10 days)</b> mare = risc crescut de corecție în ~10 zile → nu accelera acumularea.</li>
-          <li><b>P_Reb_10D (rebound probability in 10 days)</b> mare = șanse crescute de rebound → susține hold/accumulate dacă regimul nu e toxic.</li>
-        </ul>
-
-        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.10); margin: 10px 0;" />
-
-        <p style="margin: 6px 0;">
-          <b>E_target_safe (exposure target)</b> (0..1):
-          expunerea recomandată în modul SAFE (long-only). Este „baza” în piață. Ajustările sunt lente, pentru
-          stabilitate psihologică și disciplină.
-        </p>
+  <div id="app">
+    <aside id="sidebar">
+      <h1 class="title">BTC Dashboard</h1>
+      <div class="subtle" id="sidebarDescription">
+        ECharts-based viewer for SAFE feature series. The candlestick item is built from
+        <code>open/high/low/close</code>.
       </div>
-    <div style="opacity:0.9; font-size:13px; line-height:1.4; margin-top:8px;">
-  <b>On-chain (activity / structure)</b>
-  <ul>
-    <li><b>OC_amount_log</b>: log din volumul total on-chain (BTC transferați/zi). Proxy pentru “energia”/activitatea rețelei. Creșteri bruște apar frecvent în stres (panică) sau în capitulare/absorbție.</li>
-    <li><b>OC_vol_z</b>: z-score pentru volumul on-chain (normalizat la istoricul trecut).
-      <ul>
-        <li>valoare mare pozitivă → activitate neobișnuit de mare față de “normal”</li>
-        <li>aproape de 0 → activitate tipică perioadei</li>
-      </ul>
-    </li>
-    <li><b>OC_whale_share</b>: ponderea tranzacțiilor mari (“whale”) din total (0..1).
-      <ul>
-        <li>crește → jucătorii mari devin relativ mai activi</li>
-        <li>scade → activitatea e dominată de tranzacții mici (retail)</li>
-      </ul>
-    </li>
-    <li><b>OC_dom_z</b>: z-score pentru dominanța tranzacțiilor mari vs mici.
-      <ul>
-        <li>pozitiv mare → dominanță neobișnuită a tranzacțiilor mari</li>
-        <li>negativ → tranzacțiile mici domină raportat la istoricul perioadei</li>
-      </ul>
-    </li>
-    <li><i>Cum se citesc împreună cu SAFE</i>:
-      <ul>
-        <li>În perioade de <b>incertitudine</b> (P_Corr și P_Reb ambele mari), on-chain indică <i>cine</i> apasă piața (whales vs retail), chiar dacă direcția nu e clară.</li>
-        <li>În <b>UP stabil</b>, dacă OC_vol_z e moderat iar OC_whale_share / OC_dom_z rămân susținute, trendul este mai robust. Dacă volumul crește dar dominanța scade, trendul devine mai fragil (retail‑driven).</li>
-      </ul>
-    </li>
-  </ul>
-</div>
-</details>
+
+      <div class="section">
+        <div class="section-title">Tab</div>
+        <div class="tab-group">
+          <button id="safeTabButton" class="tab-button active" type="button">SAFE features</button>
+          <button id="rawTabButton" class="tab-button" type="button">Raw daily data</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Data Source</div>
+        <div class="button-row">
+          <button id="reloadButton" type="button">Reload default</button>
+          <button id="openFileButton" type="button">Open file</button>
+        </div>
+        <input id="fileInput" class="hidden" type="file" accept=".json,application/json" />
+      </div>
+
+      <div class="section">
+        <label for="searchInput">Filter series</label>
+        <input id="searchInput" type="text" placeholder="Search series..." />
+      </div>
+
+      <div class="section">
+        <label for="seriesSelect">Series</label>
+        <select id="seriesSelect" multiple></select>
+        <div class="button-row-3">
+          <button id="selectAllButton" type="button">Select all</button>
+          <button id="selectVisibleButton" type="button">Select visible</button>
+          <button id="clearButton" type="button">Clear</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Layout</div>
+        <div class="radio-group">
+          <label><input type="radio" name="layout" value="overlay" checked /> Overlay</label>
+          <label><input type="radio" name="layout" value="stacked" /> Stacked vertically</label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="pill" id="summaryPill">No data loaded</div>
+      </div>
+    </aside>
+
+    <main id="main">
+      <div id="topbar">
+        <div class="title" id="mainTitle" style="margin:0; font-size:16px;">Interactive BTC SAFE feature dashboard</div>
+        <div id="status">Loading default data...</div>
+      </div>
+      <div id="chartArea">
+        <div id="charts"></div>
+      </div>
+    </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script>
-    const chart = echarts.init(document.getElementById('chart'), null, { renderer: 'canvas' });
-    window.addEventListener('resize', () => chart.resize());
+    const DEFAULT_FEATURES_PATH = "../out/features.json";
+    const DEFAULT_DAILY_AMOUNTS_PATH = "../data/daily_amounts.json";
+    const DEFAULT_DAILY_TX_SIZE_PATH = "../data/daily_tx_size.json";
+    const CANDLESTICK_LABEL = "Candlestick (OHLC)";
 
-    async function loadData() {
-      const params = new URLSearchParams(location.search);
-      const asset = (params.get('asset') || 'btc').toLowerCase();
-
-      const featuresPath = `../out/${asset}/features.json`;
-      const onchainPath = `../out/${asset}/onchain_features.json`;
-
-      const featuresRes = await fetch(featuresPath, { cache: 'no-store' });
-      if (!featuresRes.ok) throw new Error(`Failed to load JSON: ${featuresRes.status} ${featuresRes.statusText} (${featuresPath})`);
-
-      // onchain is optional (e.g. for non-BTC assets)
-      let onchainPayload = null;
-      try {
-        const onRes = await fetch(onchainPath, { cache: 'no-store' });
-        if (onRes.ok) onchainPayload = await onRes.json();
-      } catch (e) {
-        onchainPayload = null;
-      }
-
-      // price file: prefer asset-specific, fall back to legacy daily_price.json
-      let dailyPrice = null;
-      const priceCandidates = [
-        `../data/${asset}_daily_price.json`,
-        `../data/daily_price.json`
-      ];
-      for (const p of priceCandidates) {
-        try {
-          const r = await fetch(p, { cache: 'no-store' });
-          if (r.ok) { dailyPrice = await r.json(); break; }
-        } catch (e) { }
-      }
-      if (!dailyPrice) {
-        console.error(`Price JSON not found. Tried: ${priceCandidates.join(', ')}. Falling back to series.close.`);
-      }
-
-      return {
-        asset,
-        features: await featuresRes.json(),
-        onchain: onchainPayload,
-        dailyPrice
-      };
-    }
-
-    const area = (name, data, xAxisIndex, yAxisIndex, stackKey = 'states', color = null) => ({
-      name, type: 'line', data,
-      xAxisIndex, yAxisIndex,
-      stack: stackKey,
-      showSymbol: false,
-      smooth: true,
-      lineStyle: { width: 1.1, color: color || undefined },
-      areaStyle: { opacity: 0.28, color: color || undefined },
-      emphasis: { focus: 'series' }
-    });
-
-    const line = (name, data, xAxisIndex, yAxisIndex, smooth = true, width = 1.8) => ({
-      name, type: 'line', data,
-      xAxisIndex, yAxisIndex,
-      showSymbol: false,
-      smooth,
-      lineStyle: { width },
-      emphasis: { focus: 'series' }
-    });
-
-    function seriesOrFallback(s, key, fallbackKey = null) {
-      const a = s[key];
-      if (a && a.length) return a.map(v => v == null ? null : +v);
-      if (fallbackKey && s[fallbackKey] && s[fallbackKey].length) return s[fallbackKey].map(v => v == null ? null : +v);
-      // return array of nulls later (caller can handle)
-      return null;
-    }
-
-    function pickRegimeSeries(s) {
-      const get = (k, fallbackKey = null) => seriesOrFallback(s, k, fallbackKey);
-
-      return [
-        ["HMM_STATE_0", get("HMM_STATE_0", "P_R0_HMM")],
-        ["HMM_STATE_1", get("HMM_STATE_1", "P_R1_HMM")],
-        ["HMM_STATE_2", get("HMM_STATE_2", "P_R2_HMM")],
-        ["HMM_STATE_3", get("HMM_STATE_3", "P_R3_HMM")],
-      ];
-    }
-
-    function buildCandleSeries(dates, closeSeries, dailyPrice) {
-      const byDate = new Map();
-      (dailyPrice || []).forEach((row) => {
-        if (row && row.timestamp) byDate.set(row.timestamp, row);
-      });
-
-      return dates.map((d, i) => {
-        const close = closeSeries ? closeSeries[i] : null;
-        if (close == null || !isFinite(close)) return [null, null, null, null];
-        const row = byDate.get(d);
-        let open = close;
-        let low = close;
-        let high = close;
-        if (row) {
-          open = +row.open;
-          low = +row.low;
-          high = +row.high;
+    const TAB_CONFIG = {
+      safe: {
+        title: "Interactive BTC SAFE feature dashboard",
+        description: "ECharts-based viewer for SAFE feature series. The candlestick item is built from open/high/low/close.",
+        defaultSelection: ["close"],
+        allowFileOpen: true,
+        buildSeriesNames(payload) {
+          return [CANDLESTICK_LABEL, ...Object.keys(payload.series)];
         }
-        if (![open, close, low, high].every((v) => isFinite(v))) return [null, null, null, null];
-        return [open, close, low, high];
+      },
+      raw: {
+        title: "Interactive BTC raw daily data dashboard",
+        description: "Viewer for raw on-chain daily files built from daily_amounts.json and daily_tx_size.json.",
+        defaultSelection: ["daily_amount"],
+        allowFileOpen: false,
+        buildSeriesNames(payload) {
+          return Object.keys(payload.series);
+        }
+      }
+    };
+
+    const state = {
+      activeTab: "safe",
+      charts: [],
+      chartGroup: `safe-viewer-${Date.now()}`,
+      views: {
+        safe: {
+          payload: null,
+          sourceLabel: DEFAULT_FEATURES_PATH,
+          filteredNames: [],
+          allSeriesNames: [],
+          selectedNames: new Set(TAB_CONFIG.safe.defaultSelection)
+        },
+        raw: {
+          payload: null,
+          sourceLabel: `${DEFAULT_DAILY_AMOUNTS_PATH} + ${DEFAULT_DAILY_TX_SIZE_PATH}`,
+          filteredNames: [],
+          allSeriesNames: [],
+          selectedNames: new Set(TAB_CONFIG.raw.defaultSelection)
+        }
+      }
+    };
+
+    const statusEl = document.getElementById("status");
+    const summaryPillEl = document.getElementById("summaryPill");
+    const searchInputEl = document.getElementById("searchInput");
+    const seriesSelectEl = document.getElementById("seriesSelect");
+    const chartsEl = document.getElementById("charts");
+    const fileInputEl = document.getElementById("fileInput");
+    const openFileButtonEl = document.getElementById("openFileButton");
+    const sidebarDescriptionEl = document.getElementById("sidebarDescription");
+    const mainTitleEl = document.getElementById("mainTitle");
+    const safeTabButtonEl = document.getElementById("safeTabButton");
+    const rawTabButtonEl = document.getElementById("rawTabButton");
+
+    function currentView() {
+      return state.views[state.activeTab];
+    }
+
+    function currentTabConfig() {
+      return TAB_CONFIG[state.activeTab];
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function setSummary(text) {
+      summaryPillEl.textContent = text;
+    }
+
+    function validateFeaturesPayload(payload) {
+      if (!payload || !Array.isArray(payload.dates) || typeof payload.series !== "object" || payload.series === null) {
+        throw new Error("features.json must contain 'dates' and 'series'.");
+      }
+      const datesLength = payload.dates.length;
+      for (const [name, values] of Object.entries(payload.series)) {
+        if (!Array.isArray(values)) {
+          throw new Error(`Series '${name}' is not an array.`);
+        }
+        if (values.length !== datesLength) {
+          throw new Error(`Series '${name}' length mismatch: expected ${datesLength}, got ${values.length}.`);
+        }
+      }
+      const requiredOhlc = ["open", "high", "low", "close"];
+      const missingOhlc = requiredOhlc.filter((name) => !(name in payload.series));
+      if (missingOhlc.length) {
+        throw new Error(`features.json is missing OHLC series required for candlesticks: ${missingOhlc.join(", ")}`);
+      }
+    }
+
+    function validateGenericPayload(payload, sourceName) {
+      if (!payload || !Array.isArray(payload.dates) || typeof payload.series !== "object" || payload.series === null) {
+        throw new Error(`${sourceName} must contain 'dates' and 'series'.`);
+      }
+      const datesLength = payload.dates.length;
+      for (const [name, values] of Object.entries(payload.series)) {
+        if (!Array.isArray(values)) {
+          throw new Error(`Series '${name}' is not an array.`);
+        }
+        if (values.length !== datesLength) {
+          throw new Error(`Series '${name}' length mismatch: expected ${datesLength}, got ${values.length}.`);
+        }
+      }
+    }
+
+    function normalizeNumberArray(values) {
+      return values.map((value) => {
+        if (value == null || value === "") return null;
+        const num = Number(value);
+        return Number.isFinite(num) ? num : null;
       });
     }
 
-    function buildOption(asset, featuresPayload, onchainPayload, dailyPrice, regimeMode) {
-      const dates = featuresPayload.dates;
+    async function fetchJson(path) {
+      const response = await fetch(path, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Failed to load ${path}: ${response.status} ${response.statusText}`);
+      }
+      return response.json();
+    }
 
-      // const n = dates.length;
-      const featuresSeries = featuresPayload.series;
-      const onChainSeries = (onchainPayload && onchainPayload.series) ? onchainPayload.series : {};
+    async function loadDefaultSafePayload() {
+      const payload = await fetchJson(DEFAULT_FEATURES_PATH);
+      validateFeaturesPayload(payload);
+      state.views.safe.sourceLabel = DEFAULT_FEATURES_PATH;
+      return payload;
+    }
 
-      const regimeColors = {
-        HMM_STATE_0: "#38bdf8",
-        HMM_STATE_1: "#f59e0b",
-        HMM_STATE_2: "#10b981",
-        HMM_STATE_3: "#a78bfa"
-      };
+    async function loadDefaultRawPayload() {
+      const [amountsPayload, txSizePayload] = await Promise.all([
+        fetchJson(DEFAULT_DAILY_AMOUNTS_PATH),
+        fetchJson(DEFAULT_DAILY_TX_SIZE_PATH)
+      ]);
 
-      const regimeKeys = ["HMM_STATE_0", "HMM_STATE_1", "HMM_STATE_2", "HMM_STATE_3"];
-
-      const regimes = pickRegimeSeries(featuresSeries);
-      const hmmLabelFallback = ["R0", "R1", "R2", "R3"];
-      const hmmStateLabels = (featuresPayload.meta && featuresPayload.meta.hmm
-        && Array.isArray(featuresPayload.meta.hmm.labels_by_state)
-        && featuresPayload.meta.hmm.labels_by_state.length === 4)
-        ? featuresPayload.meta.hmm.labels_by_state
-        : hmmLabelFallback;
-
-      const dateIndex = new Map(dates.map((d, i) => [d, i]));
-
-      const priceSeries = seriesOrFallback(featuresSeries, "close", "price");
-      const priceSeriesEnabled = priceSeries && priceSeries.length === dates.length;
-      if (!priceSeriesEnabled) {
-        const got = priceSeries ? priceSeries.length : "missing";
-        console.error(`Price series length mismatch. Expected ${dates.length}, got ${got}. Disabling price series.`);
+      if (typeof amountsPayload !== "object" || amountsPayload === null || Array.isArray(amountsPayload)) {
+        throw new Error(`${DEFAULT_DAILY_AMOUNTS_PATH} must contain a date-to-value object.`);
+      }
+      if (!Array.isArray(txSizePayload) || txSizePayload.length < 2 || !Array.isArray(txSizePayload[0]) || txSizePayload[0][0] !== "date") {
+        throw new Error(`${DEFAULT_DAILY_TX_SIZE_PATH} must contain a header row starting with 'date'.`);
       }
 
-      const candles = priceSeriesEnabled ? buildCandleSeries(dates, priceSeries, dailyPrice) : [];
-
-      const pCorr = seriesOrFallback(featuresSeries, "P_CORRECTION_10D_CAL", "P_CORRECTION_10D") || [];
-      const pReb = seriesOrFallback(featuresSeries, "P_REBOUND_10D_CAL", "P_REBOUND_10D") || [];
-
-      const E_safe = seriesOrFallback(featuresSeries, "E_target_safe") || [];
-
-      // If some series are missing (null), replace with arrays of nulls for chart consistency
-      function ensure(arr) {
-        if (arr && arr.length) return arr;
-        return new Array(dates.length).fill(null);
+      const dates = new Set(Object.keys(amountsPayload));
+      for (const row of txSizePayload.slice(1)) {
+        if (Array.isArray(row) && row.length) {
+          dates.add(String(row[0]));
+        }
       }
 
-      const regSeries = regimes.map(([name, data]) => [name, ensure(data)]);
+      const sortedDates = Array.from(dates).sort();
+      const series = { daily_amount: sortedDates.map((date) => amountsPayload[date] ?? null) };
 
-      // --- On-chain series (date-aligned + smoothing) ---
-      const ocDates = (onchainPayload && onchainPayload.dates) ? onchainPayload.dates : [];
-      const ocIndex = new Map(ocDates.map((d, i) => [d, i]));
+      const header = txSizePayload[0];
+      const txByDate = new Map();
+      for (const row of txSizePayload.slice(1)) {
+        if (Array.isArray(row) && row.length === header.length) {
+          txByDate.set(String(row[0]), row.slice(1));
+        }
+      }
 
-      function ocAligned(key) {
-        const src = onChainSeries[key] || [];
-        return dates.map((d) => {
-          const idx = ocIndex.get(d);
-          if (idx == null) return null;
-          const v = src[idx];
-          return v == null ? null : +v;
+      for (let columnIndex = 1; columnIndex < header.length; columnIndex += 1) {
+        const columnName = String(header[columnIndex]);
+        series[columnName] = sortedDates.map((date) => {
+          const row = txByDate.get(date);
+          return row ? row[columnIndex - 1] : null;
         });
       }
 
-      const oc_amount_log = ocAligned('ONCHAIN_AMOUNT_LOG');
-      const oc_vol_z = ocAligned('ONCHAIN_VOL_Z');
-      const oc_whale_share = ocAligned('ONCHAIN_WHALE_SHARE');
-      const oc_dom_z = ocAligned('ONCHAIN_DOM_Z');
+      const payload = { dates: sortedDates, series };
+      validateGenericPayload(payload, "raw daily payload");
+      state.views.raw.sourceLabel = `${DEFAULT_DAILY_AMOUNTS_PATH} + ${DEFAULT_DAILY_TX_SIZE_PATH}`;
+      return payload;
+    }
 
+    async function loadSafePayloadFromFile(file) {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      validateFeaturesPayload(payload);
+      state.views.safe.sourceLabel = file.name;
+      return payload;
+    }
+
+    function syncUiForTab() {
+      const cfg = currentTabConfig();
+      sidebarDescriptionEl.textContent = cfg.description;
+      mainTitleEl.textContent = cfg.title;
+      openFileButtonEl.classList.toggle("hidden", !cfg.allowFileOpen);
+      safeTabButtonEl.classList.toggle("active", state.activeTab === "safe");
+      rawTabButtonEl.classList.toggle("active", state.activeTab === "raw");
+    }
+
+    function syncSeriesList(filterText = "") {
+      const view = currentView();
+      const query = filterText.trim().toLowerCase();
+      view.filteredNames = view.allSeriesNames.filter((name) => name.toLowerCase().includes(query));
+
+      seriesSelectEl.innerHTML = "";
+      for (const name of view.filteredNames) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        if (view.selectedNames.has(name)) {
+          option.selected = true;
+        }
+        seriesSelectEl.appendChild(option);
+      }
+
+      if (!view.selectedNames.size && seriesSelectEl.options.length) {
+        for (const option of seriesSelectEl.options) {
+          if (currentTabConfig().defaultSelection.includes(option.value)) {
+            option.selected = true;
+            view.selectedNames.add(option.value);
+          }
+        }
+      }
+    }
+
+    function getSelectedSeries() {
+      const view = currentView();
+      return view.allSeriesNames.filter((name) => view.selectedNames.has(name));
+    }
+
+    function syncSelectedNamesFromList() {
+      const view = currentView();
+      const visibleNames = new Set(view.filteredNames);
+      for (const name of visibleNames) {
+        view.selectedNames.delete(name);
+      }
+      for (const option of seriesSelectEl.selectedOptions) {
+        view.selectedNames.add(option.value);
+      }
+    }
+
+    function disposeCharts() {
+      for (const chart of state.charts) {
+        chart.dispose();
+      }
+      state.charts = [];
+      echarts.disconnect(state.chartGroup);
+    }
+
+    function candlestickData(payload) {
+      const open = normalizeNumberArray(payload.series.open);
+      const high = normalizeNumberArray(payload.series.high);
+      const low = normalizeNumberArray(payload.series.low);
+      const close = normalizeNumberArray(payload.series.close);
+      return payload.dates.map((_, index) => [open[index], close[index], low[index], high[index]]);
+    }
+
+    function buildLineSeries(name, payload, axisIndex = 0) {
       return {
-        backgroundColor: '#0b0e12',
-        animation: false,
-        title: [],
-
-        toolbox: { right: 12, top: 64, iconStyle: { borderColor: 'rgba(255,255,255,0.35)' }, feature: { dataZoom: { yAxisIndex: 'none' }, restore: {}, saveAsImage: {} } },
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: { type: 'cross' },
-          backgroundColor: 'rgba(17,20,28,0.92)',
-          borderColor: 'rgba(255,255,255,0.12)',
-          textStyle: { color: '#e8eefc' },
-          formatter: (params) => {
-            if (!params || !params.length) return '';
-            const date = params[0].axisValue;
-            const idx = dateIndex.get(date);
-            const domArr = featuresSeries["HMM_DOM"];
-            const confArr = featuresSeries["HMM_CONF"];
-            let dom = null;
-            let conf = null;
-            if (idx != null && domArr && domArr[idx] != null) {
-              const v = +domArr[idx];
-              dom = isFinite(v) ? Math.round(v) : null;
-            }
-            if (idx != null && confArr && confArr[idx] != null) {
-              const v = +confArr[idx];
-              conf = isFinite(v) ? v : null;
-            }
-            if (dom == null || conf == null) {
-              const probs = regimeKeys.map((k) => {
-                const arr = featuresSeries[k];
-                if (!arr || idx == null || arr[idx] == null) return 0;
-                const v = +arr[idx];
-                return isFinite(v) ? v : 0;
-              });
-              conf = Math.max(...probs);
-              dom = probs.indexOf(conf);
-            }
-            const domLabel = (dom != null && isFinite(dom))
-              ? (hmmStateLabels[dom] || `R${dom}`)
-              : 'UNKNOWN';
-            const domColor = regimeColors[`HMM_STATE_${dom}`] || '#94a3b8';
-
-            const lines = [];
-            lines.push(`<div style="font-weight:700; margin-bottom:4px;">${date}</div>`);
-            lines.push(`<div>Regime: <span style="color:${domColor}; font-weight:700;">${domLabel}</span></div>`);
-            lines.push(`<div>State id: ${(dom != null && isFinite(dom)) ? dom : '-'}</div>`);
-            lines.push(`<div>HMM_CONF: ${(conf != null && isFinite(conf)) ? conf.toFixed(3) : '-'}</div>`);
-            lines.push('<div style="margin:6px 0; height:1px; background:rgba(255,255,255,0.08);"></div>');
-
-            params.forEach((p) => {
-              if (!p || p.data == null || p.seriesName.startsWith('HMM_STATE_')) return;
-              const v = (typeof p.data === 'number' && isFinite(p.data)) ? p.data : null;
-              const val = v == null ? '-' : v.toFixed(4);
-              lines.push(`<div><span style="display:inline-block; margin-right:6px; width:8px; height:8px; border-radius:50%; background:${p.color};"></span>${p.seriesName}: ${val}</div>`);
-            });
-
-            return lines.join('');
-          }
-        },
-        axisPointer: { link: [{ xAxisIndex: 'all' }] },
-        legend: {
-          type: 'scroll', top: 36,
-          left: 12,
-          right: 12,
-          textStyle: { color: '#cbd5e1' },
-          itemWidth: 14,
-          itemHeight: 8,
-          pageIconColor: '#cbd5e1',
-          pageTextStyle: { color: '#a9b4cc' },
-          // Pornim cu un set "citibil" by default. Restul rămân în legendă, dar OFF.
-          selected: {
-            'Price': true,
-            'HMM_STATE_0': true,
-            'HMM_STATE_1': true,
-            'HMM_STATE_2': true,
-            'HMM_STATE_3': true,
-            'P_Corr_10D': true,
-            'P_Reb_10D': true,
-            'E_target_safe': true,
-            'OC_amount_log': true,
-            'OC_vol_z': true,
-            'OC_whale_share': true,
-            'OC_dom_z': true,
-          }
-        },
-        grid: [
-          // Layout lizibil + spațiu pentru slider jos (mai mult aer între panouri)
-          { left: 60, right: 70, top: '11%', height: '45%' },    // price (mare)
-          { left: 60, right: 70, top: '60%', height: '7%' },     // regimes (benzi)
-          { left: 60, right: 70, top: '69%', height: '7%' },     // hazard
-          { left: 60, right: 70, top: '78%', height: '7%' },     // exposure
-          { left: 60, right: 70, top: '87%', height: '7%' },     // onchain (all)
-        ],
-        xAxis: [
-          { type: 'category', data: dates, gridIndex: 0, boundaryGap: true, axisLabel: { color: '#a9b4cc', hideOverlap: true, margin: 10 } },
-          { type: 'category', data: dates, gridIndex: 1, boundaryGap: false, axisLabel: { show: false } },
-          { type: 'category', data: dates, gridIndex: 2, boundaryGap: false, axisLabel: { show: false } },
-          { type: 'category', data: dates, gridIndex: 3, boundaryGap: false, axisLabel: { show: false } },
-          { type: 'category', data: dates, gridIndex: 4, boundaryGap: false, axisLabel: { show: false } },
-        ],
-        yAxis: [
-          {
-            type: 'log', gridIndex: 0, scale: true, splitNumber: 6,
-            min: (val) => Math.max(1e-8, val.min * 0.98),
-            max: (val) => val.max * 1.02,
-            axisLabel: {
-              color: '#a9b4cc', formatter: (v) => {
-                const n = +v;
-                if (!isFinite(n) || n <= 0) return '';
-                if (n >= 1e6) return (n / 1e6).toFixed(0) + 'M';
-                if (n >= 1e3) return (n / 1e3).toFixed(0) + 'k';
-                return String(Math.round(n));
-              }
-            },
-            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.08)' } }
-          }, // 0 price
-          { type: 'value', gridIndex: 1, min: 0, max: 1, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }, // 1 regimes
-          { type: 'value', gridIndex: 2, min: 0, max: 1, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }, // 2 hazard
-          { type: 'value', gridIndex: 3, min: 0, max: 1, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }, // 3 exposure
-          { type: 'value', gridIndex: 4, scale: true, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } } }, // 4 onchain amount_log
-          { type: 'value', gridIndex: 4, min: 0, max: 1, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { show: false } }, // 5 onchain whale_share
-          { type: 'value', gridIndex: 4, scale: true, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.18)' } }, splitLine: { show: false } }  // 6 onchain z-scores
-        ],
-        dataZoom: [
-          { type: 'inside', xAxisIndex: [0, 1, 2, 3, 4], filterMode: 'filter' },
-          { type: 'slider', xAxisIndex: [0, 1, 2, 3, 4], bottom: 10, height: 32, filterMode: 'filter' }
-        ],
-        series: [
-          // PRICE
-          {
-            name: 'Price',
-            type: 'candlestick',
-            xAxisIndex: 0,
-            yAxisIndex: 0,
-            data: priceSeriesEnabled ? candles : [],
-            show: priceSeriesEnabled,
-            itemStyle: {
-              color: '#22c55e',
-              color0: '#ef4444',
-              borderColor: '#22c55e',
-              borderColor0: '#ef4444'
-            }
-          },
-
-          // REGIMES (stacked)
-          ...regSeries.map(([name, data]) => area(name, data, 1, 1, 'regimes', regimeColors[name])),
-
-          // HAZARD
-          line('P_Corr_10D', ensure(pCorr), 2, 2, true, 1.7),
-          line('P_Reb_10D', ensure(pReb), 2, 2, true, 1.7),
-
-          // EXPOSURE (SAFE is 0..1, AGGR is -1..1)
-          line('E_target_safe', ensure(E_safe), 3, 3, true, 1.7),
-
-          line('OC_amount_log', oc_amount_log, 4, 4, true, 1.6),
-          line('OC_vol_z', oc_vol_z, 4, 6, true, 1.6),
-          line('OC_whale_share', oc_whale_share, 4, 5, true, 1.6),
-          line('OC_dom_z', oc_dom_z, 4, 6, true, 1.6),
-        ]
+        name,
+        type: "line",
+        data: normalizeNumberArray(payload.series[name]),
+        yAxisIndex: axisIndex,
+        showSymbol: false,
+        smooth: false,
+        connectNulls: false,
+        lineStyle: { width: 1.7 },
+        emphasis: { focus: "series" }
       };
     }
 
-    let payloadCache = null;
-
-    async function render() {
-      const mode = 'hmm';
-      if (!payloadCache) payloadCache = await loadData();
-
-      document.getElementById('assetBadge').textContent = (payloadCache.asset || 'btc').toUpperCase();
-      chart.setOption(buildOption(payloadCache.asset, payloadCache.features, payloadCache.onchain, payloadCache.dailyPrice, mode), { notMerge: true });
+    function buildCandlestickSeries(payload) {
+      return {
+        name: CANDLESTICK_LABEL,
+        type: "candlestick",
+        data: candlestickData(payload),
+        itemStyle: {
+          color: "#2ecc71",
+          color0: "#ff5c6c",
+          borderColor: "#2ecc71",
+          borderColor0: "#ff5c6c"
+        },
+        emphasis: { focus: "series" }
+      };
     }
 
-    render().catch(err => {
-      chart.setOption({
-        backgroundColor: '#0b0e12',
-        title: { text: 'Eroare la încărcare dashboard', left: 'center', top: 'center', textStyle: { color: '#e8eefc' } },
-        graphic: { type: 'text', left: 'center', top: '55%', style: { text: String(err), fill: '#a9b4cc', fontSize: 12 } }
-      });
+    function createCommonOptionBase(title, payload) {
+      return {
+        animation: false,
+        backgroundColor: "transparent",
+        title: {
+          text: title,
+          left: 14,
+          top: 10,
+          textStyle: {
+            color: "#e9f0fb",
+            fontSize: 13,
+            fontWeight: 700
+          }
+        },
+        legend: {
+          top: 10,
+          right: 16,
+          textStyle: { color: "#d0dbed" }
+        },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "cross" },
+          backgroundColor: "rgba(10, 14, 20, 0.96)",
+          borderColor: "rgba(255,255,255,0.12)",
+          textStyle: { color: "#eff6ff" }
+        },
+        grid: {
+          left: 56,
+          right: 28,
+          top: 56,
+          bottom: 76
+        },
+        xAxis: {
+          type: "category",
+          data: payload.dates,
+          boundaryGap: true,
+          axisLine: { lineStyle: { color: "#5b6b82" } },
+          axisLabel: { color: "#c3cfe2" }
+        },
+        yAxis: {
+          type: "value",
+          scale: true,
+          axisLine: { lineStyle: { color: "#5b6b82" } },
+          splitLine: { lineStyle: { color: "rgba(255,255,255,0.08)" } },
+          axisLabel: { color: "#c3cfe2" }
+        },
+        dataZoom: [
+          {
+            type: "inside",
+            xAxisIndex: [0],
+            filterMode: "filter"
+          },
+          {
+            type: "slider",
+            xAxisIndex: [0],
+            filterMode: "filter",
+            bottom: 22,
+            height: 28,
+            borderColor: "rgba(255,255,255,0.08)",
+            backgroundColor: "rgba(255,255,255,0.04)",
+            fillerColor: "rgba(86, 182, 255, 0.22)",
+            moveHandleStyle: { color: "#88cdfd" }
+          }
+        ],
+        toolbox: {
+          right: 16,
+          bottom: 18,
+          iconStyle: { borderColor: "#cbd7ea" },
+          feature: {
+            dataZoom: { yAxisIndex: "none" },
+            restore: {},
+            saveAsImage: {}
+          }
+        }
+      };
+    }
+
+    function buildOverlayOption(selected, payload) {
+      const option = createCommonOptionBase("Overlay", payload);
+      const includesCandlestick = state.activeTab === "safe" && selected.includes(CANDLESTICK_LABEL);
+      const lineNames = selected.filter((name) => name !== CANDLESTICK_LABEL);
+      const priceScaleSeries = new Set(["open", "high", "low", "close"]);
+
+      option.series = [];
+      if (includesCandlestick) {
+        option.series.push(buildCandlestickSeries(payload));
+      }
+
+      if (includesCandlestick && lineNames.some((name) => !priceScaleSeries.has(name))) {
+        option.yAxis = [
+          option.yAxis,
+          {
+            type: "value",
+            scale: true,
+            position: "right",
+            axisLine: { lineStyle: { color: "#5b6b82" } },
+            splitLine: { show: false },
+            axisLabel: { color: "#c3cfe2" }
+          }
+        ];
+      }
+
+      for (const name of lineNames) {
+        const yAxisIndex = includesCandlestick && !priceScaleSeries.has(name) ? 1 : 0;
+        option.series.push(buildLineSeries(name, payload, yAxisIndex));
+      }
+
+      return option;
+    }
+
+    function buildSingleSeriesOption(name, payload) {
+      const option = createCommonOptionBase(name, payload);
+      option.legend = { show: false };
+      option.series = state.activeTab === "safe" && name === CANDLESTICK_LABEL
+        ? [buildCandlestickSeries(payload)]
+        : [buildLineSeries(name, payload)];
+      return option;
+    }
+
+    function createChartCard(title, stacked = false) {
+      const card = document.createElement("section");
+      card.className = "chart-card";
+
+      const header = document.createElement("div");
+      header.className = "chart-header";
+      header.textContent = title;
+      card.appendChild(header);
+
+      const chartDiv = document.createElement("div");
+      chartDiv.className = `chart${stacked ? " stacked" : ""}`;
+      card.appendChild(chartDiv);
+
+      chartsEl.appendChild(card);
+      return chartDiv;
+    }
+
+    function renderCharts() {
+      disposeCharts();
+      chartsEl.innerHTML = "";
+
+      const view = currentView();
+      if (!view.payload) {
+        chartsEl.innerHTML = `<div class="empty">No data loaded.</div>`;
+        return;
+      }
+
+      const selected = getSelectedSeries();
+      if (!selected.length) {
+        chartsEl.innerHTML = `<div class="empty">Select one or more series from the list to render charts.</div>`;
+        setStatus("No series selected");
+        setSummary(`${view.payload.dates.length} rows loaded`);
+        return;
+      }
+
+      const layout = document.querySelector('input[name="layout"]:checked').value;
+      const chartTargets = [];
+
+      if (layout === "overlay") {
+        chartTargets.push({
+          element: createChartCard("Overlay", false),
+          option: buildOverlayOption(selected, view.payload)
+        });
+      } else {
+        for (const name of selected) {
+          chartTargets.push({
+            element: createChartCard(name, true),
+            option: buildSingleSeriesOption(name, view.payload)
+          });
+        }
+      }
+
+      for (const target of chartTargets) {
+        const chart = echarts.init(target.element, null, { renderer: "canvas" });
+        chart.group = state.chartGroup;
+        chart.setOption(target.option, true);
+        state.charts.push(chart);
+      }
+
+      if (state.charts.length > 1) {
+        echarts.connect(state.chartGroup);
+      }
+
+      setStatus(`Showing ${selected.length} item(s) in ${layout} layout from ${view.sourceLabel}`);
+      setSummary(`${view.payload.dates.length} rows · ${Object.keys(view.payload.series).length} series`);
+    }
+
+    async function initializeDefaults() {
+      setStatus("Loading default data...");
+      try {
+        const [safePayload, rawPayload] = await Promise.all([
+          loadDefaultSafePayload(),
+          loadDefaultRawPayload()
+        ]);
+
+        state.views.safe.payload = safePayload;
+        state.views.safe.allSeriesNames = TAB_CONFIG.safe.buildSeriesNames(safePayload);
+        state.views.safe.selectedNames = new Set(
+          TAB_CONFIG.safe.defaultSelection.filter((name) => state.views.safe.allSeriesNames.includes(name))
+        );
+
+        state.views.raw.payload = rawPayload;
+        state.views.raw.allSeriesNames = TAB_CONFIG.raw.buildSeriesNames(rawPayload);
+        state.views.raw.selectedNames = new Set(
+          TAB_CONFIG.raw.defaultSelection.filter((name) => state.views.raw.allSeriesNames.includes(name))
+        );
+
+        syncUiForTab();
+        syncSeriesList(searchInputEl.value);
+        renderCharts();
+      } catch (error) {
+        chartsEl.innerHTML = `
+          <div class="empty">
+            <div>
+              <strong>Could not load the default dashboard data.</strong><br />
+              ${error.message}<br /><br />
+              If you opened this page directly via <code>file://</code>, serve the repository with a local HTTP server
+              or use the SAFE tab's <strong>Open file</strong> button for features.json.
+            </div>
+          </div>`;
+        setStatus(error.message);
+        setSummary("Load failed");
+      }
+    }
+
+    async function openSelectedSafeFile(file) {
+      try {
+        const payload = await loadSafePayloadFromFile(file);
+        state.views.safe.payload = payload;
+        state.views.safe.allSeriesNames = TAB_CONFIG.safe.buildSeriesNames(payload);
+        state.views.safe.selectedNames = new Set(
+          TAB_CONFIG.safe.defaultSelection.filter((name) => state.views.safe.allSeriesNames.includes(name))
+        );
+        if (state.activeTab === "safe") {
+          syncSeriesList(searchInputEl.value);
+          renderCharts();
+        }
+      } catch (error) {
+        setStatus(error.message);
+        setSummary("Load failed");
+        alert(error.message);
+      }
+    }
+
+    function switchTab(tabName) {
+      state.activeTab = tabName;
+      syncUiForTab();
+      syncSeriesList(searchInputEl.value);
+      renderCharts();
+    }
+
+    document.getElementById("reloadButton").addEventListener("click", initializeDefaults);
+    openFileButtonEl.addEventListener("click", () => {
+      if (state.activeTab === "safe") {
+        fileInputEl.click();
+      }
     });
 
-    window.addEventListener('resize', () => chart.resize());
-    document.getElementById('desc')?.addEventListener('toggle', () => setTimeout(() => chart.resize(), 50));
+    safeTabButtonEl.addEventListener("click", () => switchTab("safe"));
+    rawTabButtonEl.addEventListener("click", () => switchTab("raw"));
 
+    document.getElementById("selectAllButton").addEventListener("click", () => {
+      const view = currentView();
+      view.selectedNames = new Set(view.allSeriesNames);
+      syncSeriesList(searchInputEl.value);
+      renderCharts();
+    });
+
+    document.getElementById("selectVisibleButton").addEventListener("click", () => {
+      const view = currentView();
+      for (const name of view.filteredNames) {
+        view.selectedNames.add(name);
+      }
+      syncSeriesList(searchInputEl.value);
+      renderCharts();
+    });
+
+    document.getElementById("clearButton").addEventListener("click", () => {
+      currentView().selectedNames.clear();
+      syncSeriesList(searchInputEl.value);
+      renderCharts();
+    });
+
+    searchInputEl.addEventListener("input", () => {
+      syncSeriesList(searchInputEl.value);
+      renderCharts();
+    });
+
+    seriesSelectEl.addEventListener("change", () => {
+      syncSelectedNamesFromList();
+      renderCharts();
+    });
+
+    fileInputEl.addEventListener("change", async (event) => {
+      const [file] = event.target.files || [];
+      if (file) {
+        await openSelectedSafeFile(file);
+      }
+      event.target.value = "";
+    });
+
+    for (const radio of document.querySelectorAll('input[name="layout"]')) {
+      radio.addEventListener("change", renderCharts);
+    }
+
+    window.addEventListener("resize", () => {
+      for (const chart of state.charts) {
+        chart.resize();
+      }
+    });
+
+    syncUiForTab();
+    initializeDefaults();
   </script>
 </body>
 

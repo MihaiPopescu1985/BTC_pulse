@@ -122,10 +122,8 @@ buttons:
     cwd: statistics
     script: |
       #!/bin/bash
-
-      source ../.venv/bin/activate
-
-      python src/util/features_viewer.py
+      firefox http://localhost:8000/viewer/dashboard.html
+      python -m http.server
 
   - id: strategies-candles
     label: Strategies - candles similarities
