@@ -1,7 +1,7 @@
 # Parse blk*.db into btc_amounts.db
 sqlite3 btc_amounts.db "create table if not exists days (date text unique, amount number);"
-# Select as json object
-sqlite3 /media/mihai/BTC/db/btc_amounts.db "select json_group_object(date, amount) as amounts from days;" > /home/mihai/Documents/BTC_pulse/frontend/charts/_data/daily_amounts.json
+# Export daily amounts for the local statistics project
+sqlite3 /media/mihai/BTC/db/btc_amounts.db "select json_group_object(date, amount) as amounts from days;" > /home/mihai/Documents/BTC_pulse/statistics/data/daily_amounts.json
 
 
 # Parse blk*.dat into blk*.db

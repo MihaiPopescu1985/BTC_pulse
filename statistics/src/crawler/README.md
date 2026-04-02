@@ -6,8 +6,7 @@
 
 - per-file SQLite databases (`blkNNNNN.db`)
 - aggregated on-chain features (`btc_amounts.db`, daily tx-size distribution)
-- frontend-ready JSON files
-- derived statistics artifacts in the `statistics` project
+- BTC data inputs for the local `statistics/data` directory
 
 `binance.py` is used by `query.py` to fetch daily BTC/USDT candles from Binance.
 
@@ -22,7 +21,6 @@ Running `python3 script/query.py` executes:
 
 1. `prepare_data()`
 2. `export_data()`
-3. `publish_changes()`
 
 ### 1) prepare_data()
 
@@ -37,15 +35,8 @@ Running `python3 script/query.py` executes:
 - Exports daily amount JSON
 - Exports daily transaction-size bucket JSON
 - Updates daily price JSON from Binance
-- Copies generated JSON files to:
-  - `frontend/_data`
-  - `statistics/data`
-- Runs `statistics/generate_statistics.sh`
-- Copies generated features back to `frontend/_data`
-
-### 3) publish_changes()
-
-- Runs `git add`, `git commit`, `git push` in the frontend repository.
+- Writes all three files directly into `statistics/data`
+- Does not copy data into any sibling project under `BTC_PULSE`
 
 ## Runtime dependencies
 
@@ -58,7 +49,6 @@ External commands:
 
 - `sqlite3`
 - crawler binary (`crawl`)
-- `git`
 
 ## Current configured paths (hardcoded)
 
@@ -68,8 +58,7 @@ From `script/query.py`:
 - database folder: `/media/mihai/BTC/db`
 - crawler binary: `/media/mihai/BTC/db/crawl`
 - query config: `/media/mihai/BTC/bitcoin-data/.btc_query_config`
-- frontend data output: `/home/mihai/Documents/BTC_pulse/frontend/_data`
-- statistics repo: `/home/mihai/Documents/BTC_pulse/statistics`
+- statistics data output: `<repo>/statistics/data`
 
 ## Configuration file expectations
 
@@ -92,15 +81,10 @@ Minimum needed:
    - `.btc_query_config` file
    - `btc_amounts.db` with table `days(date PRIMARY KEY, amount)`
 
-## Moving to `statistics` repository
-
-If you migrate `query.py` and `binance.py` to `/home/mihai/Documents/BTC_pulse/statistics`, recommended next refactor:
+## Further cleanup
 
 1. Replace hardcoded paths with env vars or CLI args.
 2. Separate pipeline stages into explicit commands:
    - parse on-chain
    - export JSON
-   - generate statistics
-   - publish
-3. Make `publish_changes()` optional (default off).
-4. Keep a small migration note in `statistics/README.md` pointing to this file.
+3. Keep the crawler independent of any sibling project in the BTC_PULSE repository.

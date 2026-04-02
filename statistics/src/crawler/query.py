@@ -4,10 +4,11 @@ from pathlib import Path
 import json
 import subprocess
 import os
-from shutil import copyfile
 
 import binance
 
+STATISTICS_DIR = Path(__file__).resolve().parents[2]
+STATISTICS_DATA_DIR = STATISTICS_DIR / "data"
 GENESIS_DATE = "03-01-2009 20:15:05"
 DATE_FORMAT = "%d-%m-%Y %H:%M:%S"
 DAT_FILES = Path("/media/mihai/BTC/bitcoin-data/blocks")
@@ -514,40 +515,19 @@ def prepare_data():
     get_block_duplicates()
     get_day_btc_amount()
 
-# TODO: this must be refactored. Lots of hardcoded paths.
-# Consider having a settings file with all the paths included.
-# Consider using the BTC_QUERY_CONFIG file for all the settings.
 def export_data():
-    # Export daily amounts
-    data_location = Path("/home/mihai/Documents/BTC_pulse/frontend/_data")
-    daily_amounts_path = data_location / "daily_amounts.json"
+    """Export crawler outputs into the local statistics data directory only."""
+    STATISTICS_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+    daily_amounts_path = STATISTICS_DATA_DIR / "daily_amounts.json"
     export_days_amount(BTC_AMOUNT_DB, daily_amounts_path)
 
-    # Export daily transaction sizes
-    daily_tx_size_output_path = data_location / "daily_tx_size.json"
+    daily_tx_size_output_path = STATISTICS_DATA_DIR / "daily_tx_size.json"
     export_daily_tx_sizes(daily_tx_size_output_path)
 
-    # Update daily prices
-    daily_price_path = data_location / "daily_price.json"
+    daily_price_path = STATISTICS_DATA_DIR / "daily_price.json"
     update_daily_price(daily_price_path)
-
-    # Update statistics
-    statistics_path = Path("/home/mihai/Documents/BTC_pulse/statistics")
-    copyfile(daily_price_path, statistics_path / "data/daily_price.json")
-    copyfile(daily_amounts_path, statistics_path / "data/daily_amounts.json")
-    copyfile(daily_tx_size_output_path, statistics_path / "data/daily_tx_size.json")
-    os.chdir(statistics_path)
-
-# Deprecated
-# def publish_changes():
-#     # Commit and push the changes
-#     os.chdir('/home/mihai/Documents/BTC_pulse/frontend')
-
-#     subprocess.run(["git", "add", "_data/*"])
-#     subprocess.run(["git", "commit", "-m", "Automated commit"])
-#     subprocess.run(["git", "push", "origin", "main"])
 
 if __name__ == "__main__":
     prepare_data()
     export_data()
-    # publish_changes()

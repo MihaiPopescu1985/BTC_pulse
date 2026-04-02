@@ -104,12 +104,12 @@ buttons:
       python src/util/print_features_range.py \
         $start \
         $end \
-        --path out/features.json >> out/daily_reading.txt
+        --path out/features.csv >> out/daily_reading.txt
 
       python src/util/print_features_range.py \
         $start \
         $end \
-        --path out/onchain_features.json >> out/daily_reading.txt
+        --path out/onchain_features.csv >> out/daily_reading.txt
 
       python src/util/safe_touch_probabilities.py --date $end >> out/daily_reading.txt
 
