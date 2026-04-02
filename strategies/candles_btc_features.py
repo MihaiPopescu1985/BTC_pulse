@@ -12,7 +12,15 @@ Design goals:
 - main() orchestrates the pipeline.
 
 Expected input:
-A JSON ... TODO: explain the JSON content and adapt the code to use the JSON content
+A date-first CSV table with at least:
+- `date`
+- `open`
+- `high`
+- `low`
+- `close`
+
+The intended SAFE workflow uses:
+- `statistics/out/features.csv`
 
 Output:
 A table containing original OHLC plus:
@@ -25,7 +33,6 @@ A table containing original OHLC plus:
 from __future__ import annotations
 
 import argparse
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, List, Optional, Sequence
@@ -344,9 +351,13 @@ def read_input_table(path: Path, fmt: str) -> pd.DataFrame:
     Read input OHLC table.
     """
     fmt = fmt.lower()
-    if fmt != "json":
-        raise ValueError(f"Unsupported input format: {fmt}")
-    return pd.read_json(path, orient="records", convert_dates=False)
+    if fmt == "csv":
+        return pd.read_csv(path)
+    if fmt == "parquet":
+        return pd.read_parquet(path)
+    if fmt == "jsonl":
+        return pd.read_json(path, orient="records", lines=True, convert_dates=False)
+    raise ValueError(f"Unsupported input format: {fmt}")
     
 def build_candle_batch(dataframe: pd.DataFrame, columns: InputColumns) -> CandleBatch:
     """
@@ -465,8 +476,8 @@ def compute_all_features_and_outcomes(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute BTC candlestick features and forward outcomes.")
-    parser.add_argument("--input", required=True, type=Path, help="Input OHLC file (json).")
-    parser.add_argument("--input-fmt", default="json", choices=["json"])
+    parser.add_argument("--input", required=True, type=Path, help="Input OHLC file, typically statistics/out/features.csv.")
+    parser.add_argument("--input-fmt", default="csv", choices=["csv", "parquet", "jsonl"])
     parser.add_argument("--output", required=True, type=Path, help="Output file path.")
     parser.add_argument("--output-fmt", default="csv", choices=["csv", "parquet", "jsonl"])
 
@@ -476,8 +487,15 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if "date" in dataframe.columns:
+        date_column = "date"
+    elif "timestamp" in dataframe.columns:
+        date_column = "timestamp"
+    else:
+        raise ValueError("Input table must contain either 'date' or 'timestamp'.")
+
     columns = InputColumns(
-        date="timestamp",
+        date=date_column,
         open="open",
         high="high",
         low="low",
@@ -488,6 +506,8 @@ def main() -> None:
     dataframe = read_input_table(args.input, args.input_fmt)
 
     # Ensure time ordering
+    if columns.date not in dataframe.columns:
+        raise ValueError(f"Input table must contain '{columns.date}' for --input-fmt={args.input_fmt}.")
     dataframe = dataframe.sort_values(columns.date).reset_index(drop=True)
 
     out = compute_all_features_and_outcomes(

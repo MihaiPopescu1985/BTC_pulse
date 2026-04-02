@@ -3,7 +3,7 @@
 candlestick_research_tool_v4.py
 
 Interval similarity search with:
-- Query by date range [--start, --end] where timestamp is "YYYY-MM-DD"
+- Query by date range [--start, --end] where the key column is a date such as `date`
 - Similarity-first selection across the full candidate universe
 - Optional time constraint (max gap days) as a secondary filter
 - No forced output: if no matches pass min similarity, returns empty result + report stating so
@@ -38,7 +38,7 @@ Cum rulezi
 Research (tot istoricul)
 python candlestick_research_tool_v4.py \
   --input out.csv \
-  --key-col timestamp \
+  --key-col date \
   --start 2026-02-05 \
   --end 2026-02-10 \
   --standardize \
@@ -49,7 +49,7 @@ python candlestick_research_tool_v4.py \
 Live-mode (doar trecutul, fără look-ahead)
 python candlestick_research_tool_v4.py \
   --input out.csv \
-  --key-col timestamp \
+  --key-col date \
   --start 2017-08-17 \
   --end 2017-08-25 \
   --standardize \
@@ -468,7 +468,7 @@ def write_html_report(
     html.append("</div>")
 
     html.append("<h2>Query interval candles</h2>")
-    # show timestamp + close only to keep readable
+    # show date + close only to keep readable
     qcols = [key_col, price_col]
     qcols = [c for c in qcols if c in query_slice.columns]
     html.append(df_to_html(query_slice[qcols], max_rows=600))
@@ -545,8 +545,8 @@ def write_html_report(
 def main() -> None:
     p = argparse.ArgumentParser(description="Interval similarity search (similarity-first, optional time constraints).")
 
-    p.add_argument("--input", required=True, type=Path, help="out.csv (must include timestamp + close + features)")
-    p.add_argument("--key-col", required=True, help="date column name, e.g. timestamp")
+    p.add_argument("--input", required=True, type=Path, help="out.csv (must include date + close + features)")
+    p.add_argument("--key-col", required=True, help="date column name, e.g. date")
     p.add_argument("--price-col", default="close", help="price column for overlays")
     p.add_argument("--features", default=",".join(DEFAULT_FEATURES), help="comma-separated feature columns")
     p.add_argument("--horizons", default="1,3,5,7,10", help="comma-separated horizons")
