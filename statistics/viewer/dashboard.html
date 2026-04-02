@@ -278,7 +278,7 @@
           <button id="reloadButton" type="button">Reload default</button>
           <button id="openFileButton" type="button">Open file</button>
         </div>
-        <input id="fileInput" class="hidden" type="file" accept=".json,application/json" />
+        <input id="fileInput" class="hidden" type="file" accept=".csv,text/csv" />
       </div>
 
       <div class="section">
@@ -322,7 +322,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script>
-    const DEFAULT_FEATURES_PATH = "../out/features.json";
+    const DEFAULT_FEATURES_PATH = "../out/features.csv";
     const DEFAULT_DAILY_AMOUNTS_PATH = "../data/daily_amounts.json";
     const DEFAULT_DAILY_TX_SIZE_PATH = "../data/daily_tx_size.json";
     const CANDLESTICK_LABEL = "Candlestick (OHLC)";
@@ -400,7 +400,7 @@
 
     function validateFeaturesPayload(payload) {
       if (!payload || !Array.isArray(payload.dates) || typeof payload.series !== "object" || payload.series === null) {
-        throw new Error("features.json must contain 'dates' and 'series'.");
+        throw new Error("features.csv must produce 'dates' and 'series'.");
       }
       const datesLength = payload.dates.length;
       for (const [name, values] of Object.entries(payload.series)) {
@@ -414,7 +414,7 @@
       const requiredOhlc = ["open", "high", "low", "close"];
       const missingOhlc = requiredOhlc.filter((name) => !(name in payload.series));
       if (missingOhlc.length) {
-        throw new Error(`features.json is missing OHLC series required for candlesticks: ${missingOhlc.join(", ")}`);
+        throw new Error(`features.csv is missing OHLC series required for candlesticks: ${missingOhlc.join(", ")}`);
       }
     }
 
@@ -449,8 +449,79 @@
       return response.json();
     }
 
+    async function fetchText(path) {
+      const response = await fetch(path, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`Failed to load ${path}: ${response.status} ${response.statusText}`);
+      }
+      return response.text();
+    }
+
+    function parseCsvLine(line) {
+      const out = [];
+      let current = "";
+      let inQuotes = false;
+
+      for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        if (char === '"') {
+          if (inQuotes && line[index + 1] === '"') {
+            current += '"';
+            index += 1;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === "," && !inQuotes) {
+          out.push(current);
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+
+      out.push(current);
+      return out;
+    }
+
+    function parseFeatureCsvText(text, sourceName) {
+      const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const lines = normalized.split("\n").filter((line) => line.trim().length > 0);
+      if (lines.length < 2) {
+        throw new Error(`${sourceName} must contain a header row and at least one data row.`);
+      }
+
+      const header = parseCsvLine(lines[0]).map((value) => value.trim());
+      if (!header.length || header[0] !== "date") {
+        throw new Error(`${sourceName} must start with a 'date' column.`);
+      }
+
+      const dates = [];
+      const series = {};
+      for (const columnName of header.slice(1)) {
+        series[columnName] = [];
+      }
+
+      for (const line of lines.slice(1)) {
+        const fields = parseCsvLine(line);
+        if (fields.length !== header.length) {
+          throw new Error(`${sourceName} row has ${fields.length} fields but expected ${header.length}.`);
+        }
+
+        dates.push(fields[0].trim());
+        for (let columnIndex = 1; columnIndex < header.length; columnIndex += 1) {
+          const rawValue = fields[columnIndex];
+          series[header[columnIndex]].push(rawValue === "" ? null : rawValue);
+        }
+      }
+
+      const payload = { dates, series };
+      validateFeaturesPayload(payload);
+      return payload;
+    }
+
     async function loadDefaultSafePayload() {
-      const payload = await fetchJson(DEFAULT_FEATURES_PATH);
+      const csvText = await fetchText(DEFAULT_FEATURES_PATH);
+      const payload = parseFeatureCsvText(csvText, DEFAULT_FEATURES_PATH);
       validateFeaturesPayload(payload);
       state.views.safe.sourceLabel = DEFAULT_FEATURES_PATH;
       return payload;
@@ -503,7 +574,7 @@
 
     async function loadSafePayloadFromFile(file) {
       const text = await file.text();
-      const payload = JSON.parse(text);
+      const payload = parseFeatureCsvText(text, file.name);
       validateFeaturesPayload(payload);
       state.views.safe.sourceLabel = file.name;
       return payload;
@@ -821,7 +892,7 @@
               <strong>Could not load the default dashboard data.</strong><br />
               ${error.message}<br /><br />
               If you opened this page directly via <code>file://</code>, serve the repository with a local HTTP server
-              or use the SAFE tab's <strong>Open file</strong> button for features.json.
+              or use the SAFE tab's <strong>Open file</strong> button for features.csv.
             </div>
           </div>`;
         setStatus(error.message);
