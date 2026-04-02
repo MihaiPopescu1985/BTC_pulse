@@ -5,8 +5,8 @@ safe_interpreter_v1.py
 SAFE 3.0 market interpreter.
 
 Inputs:
-  - features.json
-  - onchain_features.json
+  - features.csv
+  - onchain_features.csv
 
 Outputs:
   - interpreter_report.json
@@ -22,17 +22,17 @@ What it does:
   4. Summarizes what usually happened next after similar states.
   5. Runs simple price-shock scenarios to see how the reading changes.
 
-This script targets the current SAFE 3.0 export format:
-  - features.json: {"meta": ..., "dates": [...], "series": {...}}
-  - onchain_features.json: {"meta": ..., "dates": [...], "series": {...}}
+This script targets the current SAFE 3.0 CSV export format:
+  - features.csv: date-first wide feature table
+  - onchain_features.csv: date-first wide on-chain feature table
 
 The scenario engine is approximate by design.
 It recomputes a subset of price-derived features from the available history,
 while keeping on-chain features and model outputs unchanged.
 
 python safe_interpreter_v2.py \
-  --features features.json \
-  --onchain onchain_features.json \
+  --features features.csv \
+  --onchain onchain_features.csv \
   --out-dir safe_interpreter_out
 """
 
@@ -43,10 +43,18 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.data.feature_store import load_feature_csv
+from src.path_config import DEFAULT_FEATURES_CSV_PATH, DEFAULT_ONCHAIN_FEATURES_CSV_PATH, OUT_DIR
 
 
 DEFAULT_GROUPS: Dict[str, List[str]] = {
@@ -137,39 +145,9 @@ def _pick_date_col(df: pd.DataFrame) -> str:
 
 
 
-def load_json_rows(path: Path) -> pd.DataFrame:
-    """Load a SAFE 3.0 JSON export into a dataframe."""
-    with path.open("r", encoding="utf-8") as f:
-        obj = json.load(f)
-
-    if not isinstance(obj, dict):
-        raise ValueError(f"{path} must be a JSON object")
-    if "dates" not in obj or "series" not in obj:
-        raise ValueError(f"{path} must contain 'dates' and 'series'")
-    if not isinstance(obj["dates"], list):
-        raise ValueError(f"{path} -> 'dates' must be a list")
-    if not isinstance(obj["series"], dict):
-        raise ValueError(f"{path} -> 'series' must be an object")
-
-    df = pd.DataFrame({"date": pd.to_datetime(obj["dates"], errors="coerce")})
-    if df["date"].isna().any():
-        raise ValueError(f"{path} contains invalid date values")
-
-    bad_lengths: List[Tuple[str, int]] = []
-    for name, values in obj["series"].items():
-        if not isinstance(values, list):
-            raise ValueError(f"{path} -> series['{name}'] must be a list")
-        if len(values) != len(df):
-            bad_lengths.append((name, len(values)))
-            continue
-        df[name] = values
-
-    if bad_lengths:
-        preview = ", ".join(f"{k}={n}" for k, n in bad_lengths[:5])
-        raise ValueError(
-            f"{path} contains series with lengths different from dates ({len(df)}): {preview}"
-        )
-    return df
+def load_csv_rows(path: Path) -> pd.DataFrame:
+    """Load a SAFE CSV export into a dataframe."""
+    return load_feature_csv(path)
 
 
 def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -190,8 +168,8 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def merge_inputs(features_path: Path, onchain_path: Path) -> pd.DataFrame:
-    features = normalize_df(load_json_rows(features_path))
-    onchain = normalize_df(load_json_rows(onchain_path))
+    features = normalize_df(load_csv_rows(features_path))
+    onchain = normalize_df(load_csv_rows(onchain_path))
 
     # Avoid duplicate date columns after merge and prefer feature-side values.
     shared = [c for c in onchain.columns if c in features.columns and c != "date"]
@@ -999,9 +977,9 @@ def md_from_report(report: Dict[str, Any]) -> str:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Interpret SAFE 3.0 features and historical analogs")
-    p.add_argument("--features", required=False, help="Path to features.json", default="/home/mihai/Documents/BTC_pulse/statistics/out/features.json")
-    p.add_argument("--onchain", required=False, help="Path to onchain_features.json", default="/home/mihai/Documents/BTC_pulse/statistics/out/onchain_features.json")
-    p.add_argument("--out-dir", default="/home/mihai/Documents/BTC_pulse/statistics/out/safe_interpreter_out_v1", help="Output directory")
+    p.add_argument("--features", required=False, help="Path to features.csv", default=str(DEFAULT_FEATURES_CSV_PATH))
+    p.add_argument("--onchain", required=False, help="Path to onchain_features.csv", default=str(DEFAULT_ONCHAIN_FEATURES_CSV_PATH))
+    p.add_argument("--out-dir", default=str(OUT_DIR / "safe_interpreter_out_v1"), help="Output directory")
     p.add_argument("--seq-len", type=int, default=5, help="Candle sequence length")
     p.add_argument("--top-k", type=int, default=20, help="Top matches per engine")
     p.add_argument("--min-gap", type=int, default=20, help="Minimum row gap from current state")

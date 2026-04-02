@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
-import json
 from pathlib import Path
 import sys
 from typing import Any
@@ -15,9 +13,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data.loaders import load_daily_price_json
-from src.features.price_features import EXPORTED_FEATURES, FeatureConfig, compute_price_features, to_echarts_json
+from src.data.feature_store import export_feature_csv
+from src.features.price_features import EXPORTED_FEATURES, FeatureConfig, compute_price_features
 from src.models.hazard_calibrated import FEATURE_COLS, HazardConfig, apply_hazard_models, train_hazard_models
-from src.path_config import DEFAULT_FEATURES_JSON_PATH, DEFAULT_HAZARD_PACK_PATH, DEFAULT_PRICE_JSON_PATH
+from src.path_config import DEFAULT_FEATURES_CSV_PATH, DEFAULT_HAZARD_PACK_PATH, DEFAULT_PRICE_JSON_PATH
 
 
 HAZARD_OUTPUT_COLUMNS: tuple[str, ...] = (
@@ -37,11 +36,11 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the BTC hazard training pipeline."""
     parser = argparse.ArgumentParser(
-        description="Compute descriptive BTC features, train calibrated hazard models, and export ../out/features.json by default.",
+        description="Compute descriptive BTC features, train calibrated hazard models, and export ../out/features.csv by default.",
     )
     parser.add_argument("--price-json", default=str(DEFAULT_PRICE_JSON_PATH), help="Default: ../data/daily_price.json")
     parser.add_argument("--hazard-pack", default=str(DEFAULT_HAZARD_PACK_PATH), help="Default: ../out/models/hazard_pack.joblib")
-    parser.add_argument("--out-json", default=str(DEFAULT_FEATURES_JSON_PATH), help="Default: ../out/features.json")
+    parser.add_argument("--out-csv", "--out-json", dest="out_csv", default=str(DEFAULT_FEATURES_CSV_PATH), help="Default: ../out/features.csv")
     parser.add_argument("--horizon", type=int, default=10)
     parser.add_argument("--corr-quantile", type=float, default=0.70)
     parser.add_argument("--rebound-quantile", type=float, default=0.70)
@@ -177,44 +176,15 @@ def apply_hazard_stage(base_features: pd.DataFrame, hazard_pack: dict[str, Any])
     return hazard_features, hazard_meta
 
 
-def _format_export_series(frame: pd.DataFrame, column: str) -> list[float | None]:
-    return [None if pd.isna(value) else round(float(value), 8) for value in frame[column].tolist()]
-
-
 def export_payload(hazard_features: pd.DataFrame, hazard_meta: dict[str, Any], out_path: Path) -> None:
-    """Export descriptive and calibrated hazard series into a single BTC JSON payload."""
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = to_echarts_json(hazard_features)
-    if "dates" not in payload or "series" not in payload:
-        raise ValueError("Export payload must contain 'dates' and 'series'.")
-
-    export_frame = hazard_features.loc[hazard_features["close"].notna()].copy()
-    if len(payload["dates"]) != len(export_frame):
-        raise ValueError("Export payload dates are misaligned with the hazard feature table.")
+    """Export descriptive and calibrated hazard columns into the BTC CSV feature store."""
+    export_frame = export_feature_csv(hazard_features, out_path, columns=list(hazard_features.columns), dropna_on="close")
+    if export_frame.columns[0] != "date":
+        raise ValueError("Feature export must use 'date' as the first CSV column.")
 
     for column in HAZARD_OUTPUT_COLUMNS:
-        payload["series"][column] = _format_export_series(export_frame, column)
-
-    payload.setdefault("meta", {})
-    payload["meta"].update(
-        {
-            "asset": "BTC",
-            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-            "rows": len(export_frame),
-            "hazard_feature_cols": list(hazard_meta["feature_cols"]),
-            "hazard_horizon_days": hazard_meta.get("meta", {}).get("horizon_days"),
-            "hazard_thresholds": {
-                "X_corr": hazard_meta.get("meta", {}).get("X_corr"),
-                "Y_rebound": hazard_meta.get("meta", {}).get("Y_rebound"),
-            },
-            "hazard": hazard_meta,
-        }
-    )
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    for column in HAZARD_OUTPUT_COLUMNS:
-        if column not in payload["series"]:
-            raise ValueError("Export payload is missing calibrated hazard series.")
+        if column not in export_frame.columns:
+            raise ValueError("Export CSV is missing calibrated hazard columns.")
 
 
 def print_summary(hazard_features: pd.DataFrame, hazard_meta: dict[str, Any]) -> None:
@@ -257,7 +227,7 @@ def main() -> None:
         joblib.dump(hazard_pack, hazard_pack_path)
 
         hazard_features, hazard_meta = apply_hazard_stage(base_features, hazard_pack)
-        out_path = Path(args.out_json)
+        out_path = Path(args.out_csv)
         export_payload(hazard_features, hazard_meta, out_path)
 
         print(f"Saved model: {hazard_pack_path}")

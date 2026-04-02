@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 
 """
-Print date-aligned series values from features.json between two dates (inclusive).
+Print date-aligned SAFE feature values from CSV between two dates (inclusive).
 
 Usage:
   python statistics/src/util/print_features_range.py 2023-01-01 2023-01-07
 
 Optional:
-  --path PATH  Path to features.json (default: statistics/out/btc/features.json)
+  --path PATH  Path to features.csv (default: statistics/out/features.csv)
 """
 
 import argparse
-import json
 from datetime import datetime
 from pathlib import Path
+
+import pandas as pd
 
 
 def parse_date(value: str) -> datetime.date:
@@ -21,7 +22,7 @@ def parse_date(value: str) -> datetime.date:
 
 
 def main() -> None:
-    default_path = Path(__file__).resolve().parents[2] / "out" / "btc" / "features.json"
+    default_path = Path(__file__).resolve().parents[2] / "out" / "features.csv"
 
     parser = argparse.ArgumentParser(
         description="Print date-aligned series values between two dates (inclusive)."
@@ -31,7 +32,7 @@ def main() -> None:
     parser.add_argument(
         "--path",
         default=str(default_path),
-        help="Path to features.json (default: statistics/out/btc/features.json)",
+        help="Path to features.csv (default: statistics/out/features.csv)",
     )
     args = parser.parse_args()
 
@@ -41,16 +42,13 @@ def main() -> None:
         print(f"Start date {args.start_date} is after end date {args.end_date}.")
         return
 
-    payload = json.loads(Path(args.path).read_text(encoding="utf-8"))
-    dates = payload.get("dates", [])
-    series = payload.get("series", {})
-
-    if not dates or not series:
-        print("No dates or series found in the json file.")
+    frame = pd.read_csv(Path(args.path))
+    if "date" not in frame.columns or len(frame.columns) <= 1:
+        print("No date column or feature columns found in the csv file.")
         return
 
     selected = []
-    for i, d in enumerate(dates):
+    for i, d in enumerate(frame["date"].tolist()):
         try:
             d_parsed = parse_date(d)
         except ValueError:
@@ -63,11 +61,12 @@ def main() -> None:
         return
 
     for i in selected:
-        date = dates[i]
+        date = frame.iloc[i]["date"]
         print(f"date: {date}")
-        for name, values in series.items():
-            value = values[i] if i < len(values) else None
-            print(f"  {name}: {value}")
+        for name in frame.columns:
+            if name == "date":
+                continue
+            print(f"  {name}: {frame.iloc[i][name]}")
 
 
 if __name__ == "__main__":

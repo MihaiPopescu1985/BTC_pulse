@@ -22,8 +22,8 @@ Default inputs are read from `../data` relative to `src`:
 
 Default outputs are written under `../out` relative to `src`:
 
-- `../out/features.json`
-- `../out/onchain_features.json`
+- `../out/features.csv`
+- `../out/onchain_features.csv`
 - `../out/models/hmm_pack.joblib`
 - `../out/models/hazard_pack.joblib`
 
@@ -114,11 +114,11 @@ Notes:
 
 - `run_exposure.py`
   - applies HMM + hazard + exposure logic
-  - writes the consolidated `../out/features.json`
+  - writes the consolidated `../out/features.csv`
 
 - `run_onchain_features.py`
   - builds descriptive on-chain features
-  - writes `../out/onchain_features.json`
+  - writes `../out/onchain_features.csv`
 
 ---
 
@@ -127,8 +127,8 @@ Notes:
 ### Print a recent feature window
 
 ```bash
-python src/util/print_features_range.py 2026-03-09 2026-03-12 --path ../out/features.json >> daily_reading.txt
-python src/util/print_features_range.py 2026-03-09 2026-03-12 --path ../out/onchain_features.json >> daily_reading.txt
+python src/util/print_features_range.py 2026-03-09 2026-03-12 --path ../out/features.csv >> daily_reading.txt
+python src/util/print_features_range.py 2026-03-09 2026-03-12 --path ../out/onchain_features.csv >> daily_reading.txt
 ```
 
 ---

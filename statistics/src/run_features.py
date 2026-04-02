@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
-from datetime import datetime, timezone
 from pathlib import Path
 import sys
 
@@ -13,8 +11,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data.loaders import load_daily_price_json
-from src.features.price_features import EXPORTED_FEATURES, FeatureConfig, compute_price_features, to_echarts_json
-from src.path_config import DEFAULT_FEATURES_JSON_PATH, DEFAULT_PRICE_JSON_PATH
+from src.data.feature_store import export_feature_csv
+from src.features.price_features import EXPORTED_FEATURES, FeatureConfig, compute_price_features
+from src.path_config import DEFAULT_FEATURES_CSV_PATH, DEFAULT_PRICE_JSON_PATH
 
 
 SUMMARY_FEATURES: tuple[str, ...] = (
@@ -30,10 +29,10 @@ SUMMARY_FEATURES: tuple[str, ...] = (
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the BTC descriptive feature pipeline."""
     parser = argparse.ArgumentParser(
-        description="Compute descriptive BTC OHLCV features and export them to ../out/features.json by default.",
+        description="Compute descriptive BTC OHLCV features and export them to ../out/features.csv by default.",
     )
     parser.add_argument("--price-json", default=str(DEFAULT_PRICE_JSON_PATH), help="Default: ../data/daily_price.json")
-    parser.add_argument("--out-json", default=str(DEFAULT_FEATURES_JSON_PATH), help="Default: ../out/features.json")
+    parser.add_argument("--out-csv", "--out-json", dest="out_csv", default=str(DEFAULT_FEATURES_CSV_PATH), help="Default: ../out/features.csv")
     parser.add_argument("--ret-fast", type=int, default=3)
     parser.add_argument("--ret-mid", type=int, default=7)
     parser.add_argument("--ret-slow", type=int, default=14)
@@ -107,30 +106,15 @@ def run_feature_pipeline(args: argparse.Namespace) -> pd.DataFrame:
 
 
 def export_features(features: pd.DataFrame, out_path: Path) -> None:
-    """Export descriptive features to the canonical BTC JSON payload."""
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = to_echarts_json(features)
-
-    if "dates" not in payload or "series" not in payload:
-        raise ValueError("Export payload must contain 'dates' and 'series'.")
-
-    series_keys = list(payload["series"].keys())
-    expected_keys = list(EXPORTED_FEATURES)
-    if series_keys != expected_keys:
+    """Export descriptive features to the canonical BTC CSV feature store."""
+    export_frame = export_feature_csv(features, out_path, columns=list(EXPORTED_FEATURES), dropna_on="close")
+    actual_columns = list(export_frame.columns)
+    expected_columns = ["date", *list(EXPORTED_FEATURES)]
+    if actual_columns != expected_columns:
         raise ValueError(
-            "Export payload series keys do not match EXPORTED_FEATURES. "
-            f"Expected {len(expected_keys)} keys, got {len(series_keys)}."
+            "Export CSV columns do not match the expected feature store contract. "
+            f"Expected {expected_columns[:5]}..., got {actual_columns[:5]}..."
         )
-
-    payload.setdefault("meta", {})
-    payload["meta"].update(
-        {
-            "asset": "BTC",
-            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-            "rows": len(features),
-        }
-    )
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def print_feature_summary(features: pd.DataFrame) -> None:
@@ -153,7 +137,7 @@ def main() -> None:
     try:
         args = parse_args()
         features = run_feature_pipeline(args)
-        out_path = Path(args.out_json)
+        out_path = Path(args.out_csv)
         export_features(features, out_path)
         print(f"Wrote: {out_path}")
         print_feature_summary(features)

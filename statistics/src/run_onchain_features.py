@@ -6,7 +6,7 @@ Inputs default to the BTC-specific repository layout relative to ``statistics/sr
 - ``../data/daily_tx_size.json``
 
 Output defaults to:
-- ``../out/onchain_features.json``
+- ``../out/onchain_features.csv``
 
 The runner stays descriptive only. It does not fit models or emit trading
 signals.
@@ -21,11 +21,14 @@ from pathlib import Path
 import sys
 from typing import Dict, List, Optional
 
+import pandas as pd
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.path_config import DEFAULT_AMOUNTS_JSON_PATH, DEFAULT_ONCHAIN_FEATURES_JSON_PATH, DEFAULT_TX_SIZE_JSON_PATH
+from src.data.feature_store import export_feature_csv
+from src.path_config import DEFAULT_AMOUNTS_JSON_PATH, DEFAULT_ONCHAIN_FEATURES_CSV_PATH, DEFAULT_TX_SIZE_JSON_PATH
 
 
 def _load_amounts(path: Path) -> Dict[str, float]:
@@ -118,11 +121,11 @@ def _pct_change(values: List[Optional[float]]) -> List[Optional[float]]:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for descriptive BTC on-chain features."""
     parser = argparse.ArgumentParser(
-        description="Build descriptive BTC on-chain features and export them to ../out/onchain_features.json by default.",
+        description="Build descriptive BTC on-chain features and export them to ../out/onchain_features.csv by default.",
     )
     parser.add_argument("--amounts-json", type=Path, default=DEFAULT_AMOUNTS_JSON_PATH, help="Default: ../data/daily_amounts.json")
     parser.add_argument("--tx-size-json", type=Path, default=DEFAULT_TX_SIZE_JSON_PATH, help="Default: ../data/daily_tx_size.json")
-    parser.add_argument("--out-json", type=Path, default=DEFAULT_ONCHAIN_FEATURES_JSON_PATH, help="Default: ../out/onchain_features.json")
+    parser.add_argument("--out-csv", "--out-json", dest="out_csv", type=Path, default=DEFAULT_ONCHAIN_FEATURES_CSV_PATH, help="Default: ../out/onchain_features.csv")
     parser.add_argument("--zwin", type=int, default=365, help="Rolling window for z-scores in days.")
     parser.add_argument(
         "--whale-mode",
@@ -191,9 +194,8 @@ def main() -> None:
     dom_z = _rolling_zscore(dom_log, args.zwin)
     whale_share_z = _rolling_zscore(whale_share, args.zwin)
 
-    out = {
-        "dates": dates,
-        "series": {
+    frame = pd.DataFrame(
+        {
             "ONCHAIN_AMOUNT_TOTAL": total_amount,
             "ONCHAIN_AMOUNT_LOG": vol_log,
             "ONCHAIN_TX_WHALE": whale_tx,
@@ -208,18 +210,13 @@ def main() -> None:
             "ONCHAIN_WHALE_TX_PCT": _pct_change(whale_tx),
             "ONCHAIN_DOM_PCT": _pct_change(dominance),
         },
-        "meta": {
-            "asset": "BTC",
-            "source_amounts": str(args.amounts_json),
-            "source_tx_size": str(args.tx_size_json),
-            "zwin": int(args.zwin),
-            "whale_mode": args.whale_mode,
-        },
-    }
+        index=pd.to_datetime(dates),
+    )
 
-    args.out_json.parent.mkdir(parents=True, exist_ok=True)
-    args.out_json.write_text(json.dumps(out, indent=2), encoding="utf-8")
-    print(f"Wrote {args.out_json} with {len(dates)} rows and {len(out['series'])} series.")
+    export_frame = export_feature_csv(frame, args.out_csv, columns=list(frame.columns))
+    if export_frame.columns[0] != "date":
+        raise ValueError("On-chain feature export must use 'date' as the first CSV column.")
+    print(f"Wrote {args.out_csv} with {len(frame)} rows and {len(frame.columns)} series.")
 
 
 if __name__ == "__main__":

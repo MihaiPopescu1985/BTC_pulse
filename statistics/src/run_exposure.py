@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
-import json
 from pathlib import Path
 import sys
 from typing import Any
@@ -15,10 +13,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.data.loaders import load_daily_price_json
-from src.features.price_features import EXPORTED_FEATURES, FeatureConfig, compute_price_features, to_echarts_json
+from src.data.feature_store import export_feature_csv
+from src.features.price_features import EXPORTED_FEATURES, FeatureConfig, compute_price_features
 from src.models.hazard_calibrated import FEATURE_COLS as HAZARD_FEATURE_COLS, apply_hazard_models
 from src.models.regime_hmm import HMM_FEATURE_COLS, apply_hmm_pack, load_hmm_pack
-from src.path_config import DEFAULT_FEATURES_JSON_PATH, DEFAULT_HAZARD_PACK_PATH, DEFAULT_HMM_PACK_PATH, DEFAULT_PRICE_JSON_PATH
+from src.path_config import DEFAULT_FEATURES_CSV_PATH, DEFAULT_HAZARD_PACK_PATH, DEFAULT_HMM_PACK_PATH, DEFAULT_PRICE_JSON_PATH
 from src.strategy.exposure import ExposureConfig, compute_exposure_series
 
 
@@ -45,10 +44,10 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the BTC exposure pipeline."""
     parser = argparse.ArgumentParser(
-        description="Compute descriptive BTC features, apply HMM and hazard packs, compute exposure, and export ../out/features.json by default.",
+        description="Compute descriptive BTC features, apply HMM and hazard packs, compute exposure, and export ../out/features.csv by default.",
     )
     parser.add_argument("--price-json", default=str(DEFAULT_PRICE_JSON_PATH), help="Default: ../data/daily_price.json")
-    parser.add_argument("--out-json", default=str(DEFAULT_FEATURES_JSON_PATH), help="Default: ../out/features.json")
+    parser.add_argument("--out-csv", "--out-json", dest="out_csv", default=str(DEFAULT_FEATURES_CSV_PATH), help="Default: ../out/features.csv")
     parser.add_argument("--hmm-pack", default=str(DEFAULT_HMM_PACK_PATH), help="Default: ../out/models/hmm_pack.joblib")
     parser.add_argument("--hazard-pack", default=str(DEFAULT_HAZARD_PACK_PATH), help="Default: ../out/models/hazard_pack.joblib")
     parser.add_argument("--hmm-mode", choices=["filter", "smooth"], default="filter")
@@ -276,20 +275,6 @@ def apply_exposure_stage(features: pd.DataFrame, exposure_cfg: ExposureConfig, m
     return exposure_features
 
 
-def _format_export_series(frame: pd.DataFrame, column: str) -> list[float | int | str | None]:
-    values: list[float | int | str | None] = []
-    for value in frame[column].tolist():
-        if pd.isna(value):
-            values.append(None)
-        elif isinstance(value, str):
-            values.append(value)
-        elif pd.api.types.is_integer(value):
-            values.append(int(value))
-        else:
-            values.append(round(float(value), 8))
-    return values
-
-
 def export_payload(
     features: pd.DataFrame,
     hmm_meta: dict[str, Any],
@@ -298,45 +283,23 @@ def export_payload(
     out_path: Path,
     exposure_mode: str,
 ) -> None:
-    """Export descriptive, HMM, hazard, and exposure series into one BTC payload."""
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    payload = to_echarts_json(features)
-    if "dates" not in payload or "series" not in payload:
-        raise ValueError("Export payload must contain 'dates' and 'series'.")
+    """Export descriptive, HMM, hazard, and exposure columns into the BTC CSV feature store."""
+    export_frame = export_feature_csv(features, out_path, columns=list(features.columns), dropna_on="close")
+    if export_frame.columns[0] != "date":
+        raise ValueError("Feature export must use 'date' as the first CSV column.")
 
-    export_frame = features.loc[features["close"].notna()].copy()
-    if len(payload["dates"]) != len(export_frame):
-        raise ValueError("Export payload dates are misaligned with the exposure feature table.")
-
-    hmm_export_columns = [
+    required_columns = [
         *_expected_hmm_state_columns(int(hmm_meta["cfg"]["n_states"])),
         "HMM_DOM",
         "HMM_CONF",
         "HMM_LABEL",
         *SEMANTIC_HMM_COLUMNS,
+        *HAZARD_OUTPUT_COLUMNS,
+        *(_expected_exposure_columns(exposure_mode)),
     ]
-    extra_columns = [*HAZARD_OUTPUT_COLUMNS, *(_expected_exposure_columns(exposure_mode))]
-    for column in [*hmm_export_columns, *extra_columns]:
-        payload["series"][column] = _format_export_series(export_frame, column)
-
-    payload.setdefault("meta", {})
-    payload["meta"].update(
-        {
-            "asset": "BTC",
-            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-            "rows": len(export_frame),
-            "hmm_mode": hmm_meta["mode"],
-            "hmm_n_states": int(hmm_meta["cfg"]["n_states"]),
-            "hmm_state_labels_by_state": hmm_meta["state_to_semantic"],
-            "hmm_semantic_to_state": hmm_meta["semantic_to_state"],
-            "hmm_diagnostics": hmm_meta.get("diagnostics", {}),
-            "hazard": hazard_meta,
-            "exposure_mode": exposure_mode,
-            "exposure_config": exposure_cfg.__dict__,
-            "hard_risk_off_enabled": bool(exposure_cfg.enable_hard_risk_off),
-        }
-    )
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    missing_columns = [column for column in required_columns if column not in export_frame.columns]
+    if missing_columns:
+        raise ValueError(f"Export CSV is missing expected enriched columns: {missing_columns}")
 
 
 def print_summary(features: pd.DataFrame, hmm_meta: dict[str, Any], hazard_meta: dict[str, Any], exposure_mode: str) -> None:
@@ -378,7 +341,7 @@ def main() -> None:
         hazard_features, hazard_meta = apply_hazard_stage(hmm_features, args)
         exposure_cfg = build_exposure_config(args)
         exposure_features = apply_exposure_stage(hazard_features, exposure_cfg, args.exposure_mode)
-        out_path = Path(args.out_json)
+        out_path = Path(args.out_csv)
         export_payload(exposure_features, hmm_meta, hazard_meta, exposure_cfg, out_path, args.exposure_mode)
         print(f"Wrote: {out_path}")
         print_summary(exposure_features, hmm_meta, hazard_meta, args.exposure_mode)

@@ -25,7 +25,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.path_config import DEFAULT_FEATURES_JSON_PATH, DEFAULT_HMM_PACK_PATH, DEFAULT_PRICE_JSON_PATH
+from src.data.feature_store import load_feature_series
+from src.path_config import DEFAULT_FEATURES_CSV_PATH, DEFAULT_HMM_PACK_PATH, DEFAULT_PRICE_JSON_PATH
 
 
 try:
@@ -66,8 +67,8 @@ def clamp(x: float, a: float, b: float) -> float:
     return max(a, min(b, x))
 
 
-def _resolve_features_json_path(features_json: str | None) -> Path:
-    return Path(features_json) if features_json else DEFAULT_FEATURES_JSON_PATH
+def _resolve_features_path(features_path: str | None) -> Path:
+    return Path(features_path) if features_path else DEFAULT_FEATURES_CSV_PATH
 
 
 def _resolve_hmm_pack_path(hmm_pack: str | None) -> Path:
@@ -108,11 +109,8 @@ def load_prices(price_json: str) -> pd.Series:
     return pd.Series(close_by_date, dtype=float).sort_index()
 
 
-def load_features(features_json: str) -> tuple[pd.Index, dict[str, list[float | None]]]:
-    with open(features_json, "r", encoding="utf-8") as handle:
-        raw = json.load(handle)
-    dates = pd.Index(raw["dates"], dtype="object")
-    return dates, raw["series"]
+def load_features(features_path: str) -> tuple[pd.Index, dict[str, list[float | None]]]:
+    return load_feature_series(features_path)
 
 
 def build_probability_frame(dates: pd.Index, series: dict[str, list[float | None]], regime_keys: tuple[str, ...]) -> pd.DataFrame:
@@ -336,7 +334,7 @@ def _select_regime_keys(series: dict[str, list[float | None]], use_legacy_raw_re
         missing = [key for key in SEMANTIC_REGIME_KEYS if key not in series]
         if missing:
             raise KeyError(
-                "Missing semantic HMM probabilities in features.json. "
+                "Missing semantic HMM probabilities in features.csv. "
                 f"Expected {list(SEMANTIC_REGIME_KEYS)}, missing {missing}."
             )
         return SEMANTIC_REGIME_KEYS
@@ -346,7 +344,7 @@ def _select_regime_keys(series: dict[str, list[float | None]], use_legacy_raw_re
     if all(key in series for key in LEGACY_ALT_KEYS):
         return LEGACY_ALT_KEYS
     raise KeyError(
-        "Legacy raw regime mode requested, but features.json does not contain HMM_STATE_* or P_R*_HMM columns."
+        "Legacy raw regime mode requested, but features.csv does not contain HMM_STATE_* or P_R*_HMM columns."
     )
 
 
@@ -409,7 +407,7 @@ def parse_args() -> argparse.Namespace:
         description="Estimate touch probabilities from regime-conditioned daily return calibration.",
     )
     parser.add_argument("--price-json", default=str(DEFAULT_PRICE_JSON_PATH), help="Default: ../data/daily_price.json")
-    parser.add_argument("--features-json", default=None, help="Default: ../out/features.json")
+    parser.add_argument("--features-csv", "--features-json", dest="features_csv", default=None, help="Default: ../out/features.csv")
     parser.add_argument("--hmm-pack", default=None, help="Default: ../out/models/hmm_pack.joblib")
     parser.add_argument("--date", default=None, help="Evaluation anchor date YYYY-MM-DD. Default: last date in features.")
     parser.add_argument("--days", type=int, default=10)
@@ -437,11 +435,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    features_json_path = _resolve_features_json_path(args.features_json)
+    features_path = _resolve_features_path(args.features_csv)
     hmm_pack_path = _resolve_hmm_pack_path(args.hmm_pack)
 
     close_series = load_prices(args.price_json)
-    dates, series = load_features(str(features_json_path))
+    dates, series = load_features(str(features_path))
     regime_keys = _select_regime_keys(series, args.use_legacy_raw_regimes)
     probability_frame = build_probability_frame(dates, series, regime_keys)
     calibrations = calibrate_regimes(close_series, probability_frame, regime_keys, winsor_p=args.winsor_p)
@@ -499,7 +497,7 @@ def main() -> None:
     print(f"Mode: {args.mode}")
     print(f"Evaluation date: {evaluation_date} | anchor close={s0:,.2f}")
     print(f"Conditioning date: {conditioning_date}")
-    print(f"Features file: {features_json_path}")
+    print(f"Features file: {features_path}")
     if args.mode == "markov":
         print(f"HMM pack: {hmm_pack_path}")
     print(f"Targets up: {targets_up}")
