@@ -24,6 +24,7 @@ Default outputs are written under `../out` relative to `src`:
 
 - `../out/features.csv`
 - `../out/onchain_features.csv`
+- `../out/targets.csv`
 - `../out/models/hmm_pack.joblib`
 - `../out/models/hazard_pack.joblib`
 
@@ -42,6 +43,7 @@ python src/run_regime_hmm.py --retrain-hmm
 python src/run_hazard_train.py
 python src/run_exposure.py
 python src/run_onchain_features.py
+python src/run_targets.py
 ```
 
 This will:
@@ -49,6 +51,7 @@ This will:
 - train HMM model
 - train hazard model
 - compute exposure
+- compute forward truth-layer targets
 - generate all outputs in `../out`
 
 ---
@@ -90,6 +93,7 @@ python src/run_regime_hmm.py --retrain-hmm
 python src/run_hazard_train.py
 python src/run_exposure.py
 python src/run_onchain_features.py
+python src/run_targets.py
 ```
 
 Notes:
@@ -119,6 +123,11 @@ Notes:
 - `run_onchain_features.py`
   - builds descriptive on-chain features
   - writes `../out/onchain_features.csv`
+
+- `run_targets.py`
+  - builds forward outcome labels for validation and analysis only
+  - writes `../out/targets.csv`
+  - must not be used as live predictive input
 
 ---
 
