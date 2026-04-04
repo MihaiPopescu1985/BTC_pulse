@@ -1,4 +1,4 @@
-# How To
+# State-Aware Feature Engine (SAFE)
 
 ## Prepare
 
@@ -13,6 +13,18 @@ pip install -r requirements.txt
 ## Repository layout
 
 This repository is BTC-specific.
+
+Productive execution path:
+- `src/core/`
+
+Archived research / descriptive v4 iteration:
+- `src/research/v4_iteration/`
+
+Accepted validation path:
+- `src/walkforward/`
+
+Utilities remain unchanged:
+- `src/util/`
 
 Default inputs are read from `../data` relative to `src`:
 
@@ -37,13 +49,16 @@ Use this when running the project for the first time or after deleting model art
 ```bash
 source .venv/bin/activate
 
-python src/crawler/query.py
-python src/run_features.py
-python src/run_regime_hmm.py --retrain-hmm
-python src/run_hazard_train.py
-python src/run_exposure.py
-python src/run_onchain_features.py
-python src/run_targets.py
+python src/data/query.py
+python src/core/run_features.py
+python src/core/run_regime_hmm.py --retrain-hmm
+python src/core/run_hazard_train.py
+python src/core/run_exposure.py
+python src/core/run_onchain_features.py
+python src/core/run_targets.py
+python src/core/run_states.py
+python src/walkforward/run_decision_analysis_walkforward.py
+python src/walkforward/run_policy_backtest_walkforward.py
 ```
 
 This will:
@@ -51,12 +66,15 @@ This will:
 - train HMM model
 - train hazard model
 - compute exposure
+- build explicit market states
 - compute forward truth-layer targets
+- build the productive walk-forward decision layer
+- run the accepted walk-forward policy proof
 - generate all outputs in `../out`
 
 ---
 
-## Active BTC pipeline
+## Productive BTC pipeline
 
 ### Daily run (apply existing models)
 
@@ -65,9 +83,9 @@ Use this for normal daily updates. This does **not retrain models**.
 ```bash
 source .venv/bin/activate
 
-python src/crawler/query.py
-python src/run_onchain_features.py
-python src/run_exposure.py
+python src/data/query.py
+python src/core/run_onchain_features.py
+python src/core/run_exposure.py
 
 # python -m http.server 8000
 # then open:
@@ -80,6 +98,26 @@ Requirements:
 
 ---
 
+### Accepted walk-forward SAFE v4.0 validation path
+
+Use this to reproduce the accepted leakage-free SAFE v4.0 validation branch.
+This is not the daily live-update surface.
+
+```bash
+source .venv/bin/activate
+
+python src/core/run_targets.py
+python src/core/run_states.py
+python src/walkforward/run_decision_analysis_walkforward.py
+python src/walkforward/run_policy_backtest_walkforward.py
+python src/walkforward/run_policy_refinement_walkforward.py
+python src/walkforward/run_policy_stress_walkforward.py
+```
+
+This is the accepted productive validation path.
+
+---
+
 ### Refit / refresh models (periodic)
 
 Use this when you want to retrain models on updated data.
@@ -87,13 +125,18 @@ Use this when you want to retrain models on updated data.
 ```bash
 source .venv/bin/activate
 
-python src/crawler/query.py
-python src/run_features.py
-python src/run_regime_hmm.py --retrain-hmm
-python src/run_hazard_train.py
-python src/run_exposure.py
-python src/run_onchain_features.py
-python src/run_targets.py
+python src/data/query.py
+python src/core/run_features.py
+python src/core/run_regime_hmm.py --retrain-hmm
+python src/core/run_hazard_train.py
+python src/core/run_exposure.py
+python src/core/run_onchain_features.py
+python src/core/run_targets.py
+python src/core/run_states.py
+python src/walkforward/run_decision_analysis_walkforward.py
+python src/walkforward/run_policy_backtest_walkforward.py
+python src/walkforward/run_policy_refinement_walkforward.py
+python src/walkforward/run_policy_stress_walkforward.py
 ```
 
 Notes:
@@ -105,31 +148,81 @@ Notes:
 
 ## Stage responsibilities
 
-- `run_features.py`
+- `src/core/run_features.py`
   - builds descriptive BTC OHLCV features
 
-- `run_regime_hmm.py`
+- `src/core/run_regime_hmm.py`
   - fits/applies the HMM regime model
   - writes `../out/models/hmm_pack.joblib`
 
-- `run_hazard_train.py`
+- `src/core/run_hazard_train.py`
   - trains calibrated hazard models
   - writes `../out/models/hazard_pack.joblib`
 
-- `run_exposure.py`
+- `src/core/run_exposure.py`
   - applies HMM + hazard + exposure logic
   - writes the consolidated `../out/features.csv`
+  - uses `src/core/exposure.py` as productive exposure-targeting logic
 
-- `run_onchain_features.py`
+- `src/core/run_onchain_features.py`
   - builds descriptive on-chain features
   - writes `../out/onchain_features.csv`
 
-- `run_targets.py`
+- `src/core/run_targets.py`
   - builds forward outcome labels for validation and analysis only
   - writes `../out/targets.csv`
   - must not be used as live predictive input
 
+- `src/core/run_states.py`
+  - builds explicit HMM-derived and rule-based market states
+  - writes `../out/states.csv`
+
+- `src/walkforward/run_decision_analysis_walkforward.py`
+  - builds the accepted leakage-free decision-validation layer
+  - writes `../out/decision_analysis_walkforward.csv`
+
+- `src/walkforward/run_policy_backtest_walkforward.py`
+  - runs the accepted leakage-free policy proof
+  - writes `../out/policy_backtest_walkforward.csv`
+
+- `src/walkforward/run_policy_refinement_walkforward.py`
+  - runs the accepted walk-forward ablation/refinement layer
+  - writes `../out/policy_refinement_walkforward.csv`
+
+- `src/walkforward/run_policy_stress_walkforward.py`
+  - runs the accepted walk-forward robustness/stress layer
+  - writes `../out/policy_stress_walkforward.csv`
+
 ---
+
+## Archived research surface
+
+These scripts remain in the repository for reference, but they are no longer part of the productive top-level execution surface:
+
+- `src/research/v4_iteration/run_indicator_reliability.py`
+- `src/research/v4_iteration/run_feature_redundancy.py`
+- `src/research/v4_iteration/run_calibration.py`
+- `src/research/v4_iteration/run_state_outcomes.py`
+- `src/research/v4_iteration/run_decision_analysis.py`
+- `src/research/v4_iteration/run_decision_validation.py`
+- `src/research/v4_iteration/run_policy_backtest.py`
+- `src/research/v4_iteration/safe_interpreter.py`
+- `src/research/v4_iteration/safe_interpreter_v2.py`
+
+---
+
+## Data retrieval surface
+
+BTC data retrieval and export now live under `src/data/`:
+
+- `src/data/query.py`
+  - updates local BTC raw inputs under `statistics/data`
+
+- `src/data/binance.py`
+  - fetches daily BTC/USDT candles from Binance
+
+- `src/data/loaders.py`
+  - validates and loads local BTC daily OHLCV
 
 ## Useful utilities
 

@@ -12,7 +12,7 @@
 ## Walk-forward decision layer
 Command:
 ```bash
-PYTHONPATH=statistics python statistics/src/run_decision_analysis_walkforward.py
+PYTHONPATH=statistics python statistics/src/walkforward/run_decision_analysis_walkforward.py
 ```
 
 Outputs:
@@ -27,7 +27,7 @@ Accepted summary:
 ## Walk-forward policy proof
 Command:
 ```bash
-PYTHONPATH=statistics python statistics/src/run_policy_backtest_walkforward.py
+PYTHONPATH=statistics python statistics/src/walkforward/run_policy_backtest_walkforward.py
 ```
 
 Outputs:
@@ -37,7 +37,7 @@ Outputs:
 ## Walk-forward refinement / ablation
 Command:
 ```bash
-PYTHONPATH=statistics python statistics/src/run_policy_refinement_walkforward.py
+PYTHONPATH=statistics python statistics/src/walkforward/run_policy_refinement_walkforward.py
 ```
 
 Outputs:
@@ -51,7 +51,7 @@ Accepted summary:
 ## Walk-forward stress testing
 Command:
 ```bash
-PYTHONPATH=statistics python statistics/src/run_policy_stress_walkforward.py
+PYTHONPATH=statistics python statistics/src/walkforward/run_policy_stress_walkforward.py
 ```
 
 Outputs:
@@ -73,4 +73,7 @@ Accepted summary:
 
 ## Notes
 - This reproducibility note documents the accepted SAFE v4.0 walk-forward branch only.
+- Productive signal-generation scripts now live under `statistics/src/core`.
+- The accepted validation branch now lives under `statistics/src/walkforward`.
+- Descriptive and exploratory v4 iteration scripts now live under `statistics/src/research/v4_iteration`.
 - It is a record of the frozen pipeline state, not a suggestion to rerun or extend experiments.

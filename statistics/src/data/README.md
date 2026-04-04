@@ -1,8 +1,8 @@
-# Query Script Guide
+# Data Retrieval Guide
 
 ## Purpose
 
-`query.py` is the orchestration script for the data pipeline that starts from raw Bitcoin `blk*.dat` files and produces:
+`query.py` is the orchestration script for the BTC data-retrieval pipeline that starts from raw Bitcoin `blk*.dat` files and produces:
 
 - per-file SQLite databases (`blkNNNNN.db`)
 - aggregated on-chain features (`btc_amounts.db`, daily tx-size distribution)
@@ -12,12 +12,12 @@
 
 ## Files
 
-- `script/query.py`: main pipeline
-- `script/binance.py`: Binance REST fetch helper
+- `src/data/query.py`: main retrieval pipeline
+- `src/data/binance.py`: Binance REST fetch helper
 
 ## End-to-end workflow
 
-Running `python3 script/query.py` executes:
+Running `python3 src/data/query.py` executes:
 
 1. `prepare_data()`
 2. `export_data()`
@@ -52,7 +52,7 @@ External commands:
 
 ## Current configured paths (hardcoded)
 
-From `script/query.py`:
+From `src/data/query.py`:
 
 - dat files: `/media/mihai/BTC/bitcoin-data/blocks`
 - database folder: `/media/mihai/BTC/db`
@@ -84,7 +84,5 @@ Minimum needed:
 ## Further cleanup
 
 1. Replace hardcoded paths with env vars or CLI args.
-2. Separate pipeline stages into explicit commands:
-   - parse on-chain
-   - export JSON
-3. Keep the crawler independent of any sibling project in the BTC_PULSE repository.
+2. Keep retrieval logic scoped to local `statistics/data` only.
+3. Preserve independence from any sibling project in the BTC_PULSE repository.

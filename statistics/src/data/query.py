@@ -4,8 +4,13 @@ from pathlib import Path
 import json
 import subprocess
 import os
+import sys
 
-import binance
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from src.data import binance
 
 STATISTICS_DIR = Path(__file__).resolve().parents[2]
 STATISTICS_DATA_DIR = STATISTICS_DIR / "data"

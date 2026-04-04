@@ -7,7 +7,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -20,7 +20,12 @@ from src.path_config import (
     DEFAULT_PRICE_JSON_PATH,
     OUT_DIR,
 )
-from src.run_policy_backtest import build_policy_definitions, build_signal_frame, compute_policy_metrics, simulate_policy_series
+from src.research.v4_iteration.run_policy_backtest import (
+    build_policy_definitions,
+    build_signal_frame,
+    compute_policy_metrics,
+    simulate_policy_series,
+)
 
 
 def parse_args() -> argparse.Namespace:

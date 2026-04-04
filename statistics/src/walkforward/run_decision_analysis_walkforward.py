@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -21,7 +21,7 @@ from src.path_config import (
     DEFAULT_TARGETS_CSV_PATH,
     OUT_DIR,
 )
-from src.run_decision_analysis import classify_decision_tilt
+from src.research.v4_iteration.run_decision_analysis import classify_decision_tilt
 
 
 EXPECTED_TARGETS: tuple[str, ...] = (

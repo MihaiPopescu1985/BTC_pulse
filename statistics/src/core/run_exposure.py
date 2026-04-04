@@ -8,7 +8,7 @@ from typing import Any
 import joblib
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -18,7 +18,7 @@ from src.features.price_features import EXPORTED_FEATURES, FeatureConfig, comput
 from src.models.hazard_calibrated import FEATURE_COLS as HAZARD_FEATURE_COLS, apply_hazard_models
 from src.models.regime_hmm import HMM_FEATURE_COLS, apply_hmm_pack, load_hmm_pack
 from src.path_config import DEFAULT_FEATURES_CSV_PATH, DEFAULT_HAZARD_PACK_PATH, DEFAULT_HMM_PACK_PATH, DEFAULT_PRICE_JSON_PATH
-from src.strategy.exposure import ExposureConfig, compute_exposure_series
+from src.core.exposure import ExposureConfig, compute_exposure_series
 
 
 SEMANTIC_HMM_COLUMNS: tuple[str, ...] = (
