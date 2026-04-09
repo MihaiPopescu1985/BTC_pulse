@@ -195,19 +195,23 @@ Notes:
 
 ---
 
-## Archived research surface
+## Research surface
 
-These scripts remain in the repository for reference, but they are no longer part of the productive top-level execution surface:
+These scripts remain outside the productive top-level execution surface. They now live in three research layers:
 
-- `src/research/v4_iteration/run_indicator_reliability.py`
-- `src/research/v4_iteration/run_feature_redundancy.py`
-- `src/research/v4_iteration/run_calibration.py`
-- `src/research/v4_iteration/run_state_outcomes.py`
-- `src/research/v4_iteration/run_decision_analysis.py`
-- `src/research/v4_iteration/run_decision_validation.py`
-- `src/research/v4_iteration/run_policy_backtest.py`
-- `src/research/v4_iteration/safe_interpreter.py`
-- `src/research/v4_iteration/safe_interpreter_v2.py`
+- `core/`: stable research building blocks
+- `research_active/`: currently active research scripts
+- `research_archive/`: older or not-currently-used research scripts
+
+- `src/research/v4_iteration/core/indicator_audit/run_indicator_reliability.py`
+- `src/research/v4_iteration/research_archive/run_feature_redundancy.py`
+- `src/research/v4_iteration/research_archive/run_calibration.py`
+- `src/research/v4_iteration/research_active/run_state_outcomes.py`
+- `src/research/v4_iteration/research_active/run_decision_analysis.py`
+- `src/research/v4_iteration/research_archive/run_decision_validation.py`
+- `src/research/v4_iteration/research_active/run_policy_backtest.py`
+- `src/research/v4_iteration/research_archive/safe_interpreter.py`
+- `src/research/v4_iteration/research_active/safe_interpreter_v2.py`
 
 ---
 

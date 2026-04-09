@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[5]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -39,13 +39,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--targets-csv", default=str(DEFAULT_TARGETS_CSV_PATH), help="Default: ../out/targets.csv")
     parser.add_argument(
         "--out-csv",
-        default=str(OUT_DIR / "indicator_reliability.csv"),
-        help="Default: ../out/indicator_reliability.csv",
+        default=str(OUT_DIR / "indicator_audit" / "indicator_reliability.csv"),
+        help="Default: ../out/indicator_audit/indicator_reliability.csv",
     )
     parser.add_argument(
         "--out-md",
-        default=str(OUT_DIR / "indicator_reliability.md"),
-        help="Default: ../out/indicator_reliability.md",
+        default=str(OUT_DIR / "indicator_audit" / "indicator_reliability.md"),
+        help="Default: ../out/indicator_audit/indicator_reliability.md",
     )
     parser.add_argument("--buckets", type=int, default=10, help="Quantile bucket count. Default: 10")
     return parser.parse_args()

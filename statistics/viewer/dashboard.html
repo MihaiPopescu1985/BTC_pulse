@@ -305,6 +305,14 @@
       </div>
 
       <div class="section">
+        <div class="section-title">Swing Overlay</div>
+        <div class="radio-group">
+          <label><input id="showSwingsToggle" type="checkbox" checked /> Show swings overlay</label>
+          <label><input id="showPivotMarkersToggle" type="checkbox" /> Show pivot markers</label>
+        </div>
+      </div>
+
+      <div class="section">
         <div class="pill" id="summaryPill">No data loaded</div>
       </div>
     </aside>
@@ -323,6 +331,7 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <script>
     const DEFAULT_FEATURES_PATH = "../out/features.csv";
+    const DEFAULT_SWINGS_PATH = "../out/swing_detection/swings.csv";
     const DEFAULT_DAILY_AMOUNTS_PATH = "../data/daily_amounts.json";
     const DEFAULT_DAILY_TX_SIZE_PATH = "../data/daily_tx_size.json";
     const CANDLESTICK_LABEL = "Candlestick (OHLC)";
@@ -355,6 +364,8 @@
       views: {
         safe: {
           payload: null,
+          swings: null,
+          swingsAvailable: false,
           sourceLabel: DEFAULT_FEATURES_PATH,
           filteredNames: [],
           allSeriesNames: [],
@@ -381,6 +392,8 @@
     const mainTitleEl = document.getElementById("mainTitle");
     const safeTabButtonEl = document.getElementById("safeTabButton");
     const rawTabButtonEl = document.getElementById("rawTabButton");
+    const showSwingsToggleEl = document.getElementById("showSwingsToggle");
+    const showPivotMarkersToggleEl = document.getElementById("showPivotMarkersToggle");
 
     function currentView() {
       return state.views[state.activeTab];
@@ -429,6 +442,20 @@
         }
         if (values.length !== datesLength) {
           throw new Error(`Series '${name}' length mismatch: expected ${datesLength}, got ${values.length}.`);
+        }
+      }
+    }
+
+    function validateSwingsRows(rows, sourceName) {
+      if (!Array.isArray(rows)) {
+        throw new Error(`${sourceName} must parse into row objects.`);
+      }
+      const required = ["start_date", "end_date", "direction", "amplitude_pct", "duration_days"];
+      for (const [index, row] of rows.entries()) {
+        for (const field of required) {
+          if (!(field in row)) {
+            throw new Error(`${sourceName} row ${index + 1} is missing '${field}'.`);
+          }
         }
       }
     }
@@ -519,12 +546,58 @@
       return payload;
     }
 
+    function parseRowCsvText(text, sourceName) {
+      const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      const lines = normalized.split("\n").filter((line) => line.trim().length > 0);
+      if (lines.length < 2) {
+        throw new Error(`${sourceName} must contain a header row and at least one data row.`);
+      }
+      const header = parseCsvLine(lines[0]).map((value) => value.trim());
+      const rows = [];
+      for (const line of lines.slice(1)) {
+        const fields = parseCsvLine(line);
+        if (fields.length !== header.length) {
+          throw new Error(`${sourceName} row has ${fields.length} fields but expected ${header.length}.`);
+        }
+        const row = {};
+        for (let index = 0; index < header.length; index += 1) {
+          row[header[index]] = fields[index].trim();
+        }
+        rows.push(row);
+      }
+      return rows;
+    }
+
+    function parseSwingsCsvText(text, sourceName) {
+      const rows = parseRowCsvText(text, sourceName).map((row) => ({
+        start_date: row.start_date,
+        end_date: row.end_date,
+        direction: row.direction,
+        amplitude_pct: row.amplitude_pct === "" ? null : Number(row.amplitude_pct),
+        duration_days: row.duration_days === "" ? null : Number(row.duration_days)
+      }));
+      validateSwingsRows(rows, sourceName);
+      return rows;
+    }
+
     async function loadDefaultSafePayload() {
       const csvText = await fetchText(DEFAULT_FEATURES_PATH);
       const payload = parseFeatureCsvText(csvText, DEFAULT_FEATURES_PATH);
       validateFeaturesPayload(payload);
       state.views.safe.sourceLabel = DEFAULT_FEATURES_PATH;
       return payload;
+    }
+
+    async function loadDefaultSwings() {
+      try {
+        const csvText = await fetchText(DEFAULT_SWINGS_PATH);
+        const rows = parseSwingsCsvText(csvText, DEFAULT_SWINGS_PATH);
+        state.views.safe.swingsAvailable = true;
+        return rows;
+      } catch (error) {
+        state.views.safe.swingsAvailable = false;
+        return null;
+      }
     }
 
     async function loadDefaultRawPayload() {
@@ -676,6 +749,113 @@
       };
     }
 
+    function buildSwingOverlaySeries(payload, swings, showPivotMarkers) {
+      if (!Array.isArray(swings) || !swings.length) {
+        return [];
+      }
+
+      const highs = normalizeNumberArray(payload.series.high);
+      const lows = normalizeNumberArray(payload.series.low);
+      const dateToIndex = new Map(payload.dates.map((date, index) => [date, index]));
+      const upSegments = [];
+      const downSegments = [];
+      const upPivots = [];
+      const downPivots = [];
+
+      for (const swing of swings) {
+        const startIndex = dateToIndex.get(swing.start_date);
+        const endIndex = dateToIndex.get(swing.end_date);
+        if (startIndex == null || endIndex == null) {
+          continue;
+        }
+
+        const isUp = swing.direction === "up";
+        const startPrice = isUp ? lows[startIndex] : highs[startIndex];
+        const endPrice = isUp ? highs[endIndex] : lows[endIndex];
+        if (startPrice == null || endPrice == null) {
+          continue;
+        }
+
+        const segment = [[swing.start_date, startPrice], [swing.end_date, endPrice], null];
+        if (isUp) {
+          upSegments.push(...segment);
+          if (showPivotMarkers) {
+            upPivots.push([swing.start_date, startPrice], [swing.end_date, endPrice]);
+          }
+        } else {
+          downSegments.push(...segment);
+          if (showPivotMarkers) {
+            downPivots.push([swing.start_date, startPrice], [swing.end_date, endPrice]);
+          }
+        }
+      }
+
+      const series = [];
+      if (upSegments.length) {
+        series.push({
+          name: "Swings up",
+          type: "line",
+          yAxisIndex: 0,
+          data: upSegments,
+          showSymbol: false,
+          connectNulls: false,
+          lineStyle: { width: 1.6, color: "#7ff0a5", opacity: 0.95 },
+          emphasis: { focus: "series" },
+          z: 8
+        });
+      }
+      if (downSegments.length) {
+        series.push({
+          name: "Swings down",
+          type: "line",
+          yAxisIndex: 0,
+          data: downSegments,
+          showSymbol: false,
+          connectNulls: false,
+          lineStyle: { width: 1.6, color: "#ff8a96", opacity: 0.95 },
+          emphasis: { focus: "series" },
+          z: 8
+        });
+      }
+      if (showPivotMarkers && upPivots.length) {
+        series.push({
+          name: "Up pivots",
+          type: "scatter",
+          yAxisIndex: 0,
+          data: upPivots,
+          symbol: "circle",
+          symbolSize: 5,
+          itemStyle: { color: "#7ff0a5", opacity: 0.95 },
+          tooltip: { show: false },
+          z: 9
+        });
+      }
+      if (showPivotMarkers && downPivots.length) {
+        series.push({
+          name: "Down pivots",
+          type: "scatter",
+          yAxisIndex: 0,
+          data: downPivots,
+          symbol: "diamond",
+          symbolSize: 5,
+          itemStyle: { color: "#ff8a96", opacity: 0.95 },
+          tooltip: { show: false },
+          z: 9
+        });
+      }
+      return series;
+    }
+
+    function shouldShowSwingOverlay(selected) {
+      return (
+        state.activeTab === "safe" &&
+        selected.includes(CANDLESTICK_LABEL) &&
+        showSwingsToggleEl.checked &&
+        Array.isArray(state.views.safe.swings) &&
+        state.views.safe.swings.length > 0
+      );
+    }
+
     function createCommonOptionBase(title, payload) {
       return {
         animation: false,
@@ -783,6 +963,10 @@
         option.series.push(buildLineSeries(name, payload, yAxisIndex));
       }
 
+      if (includesCandlestick && shouldShowSwingOverlay(selected)) {
+        option.series.push(...buildSwingOverlaySeries(payload, state.views.safe.swings, showPivotMarkersToggleEl.checked));
+      }
+
       return option;
     }
 
@@ -792,6 +976,9 @@
       option.series = state.activeTab === "safe" && name === CANDLESTICK_LABEL
         ? [buildCandlestickSeries(payload)]
         : [buildLineSeries(name, payload)];
+      if (state.activeTab === "safe" && name === CANDLESTICK_LABEL && shouldShowSwingOverlay([CANDLESTICK_LABEL])) {
+        option.series.push(...buildSwingOverlaySeries(payload, state.views.safe.swings, showPivotMarkersToggleEl.checked));
+      }
       return option;
     }
 
@@ -859,7 +1046,10 @@
       }
 
       setStatus(`Showing ${selected.length} item(s) in ${layout} layout from ${view.sourceLabel}`);
-      setSummary(`${view.payload.dates.length} rows · ${Object.keys(view.payload.series).length} series`);
+      const swingsLabel = state.activeTab === "safe"
+        ? (view.swingsAvailable ? (showSwingsToggleEl.checked ? " · swings on" : " · swings loaded") : " · swings unavailable")
+        : "";
+      setSummary(`${view.payload.dates.length} rows · ${Object.keys(view.payload.series).length} series${swingsLabel}`);
     }
 
     async function initializeDefaults() {
@@ -869,8 +1059,10 @@
           loadDefaultSafePayload(),
           loadDefaultRawPayload()
         ]);
+        const swings = await loadDefaultSwings();
 
         state.views.safe.payload = safePayload;
+        state.views.safe.swings = swings;
         state.views.safe.allSeriesNames = TAB_CONFIG.safe.buildSeriesNames(safePayload);
         state.views.safe.selectedNames = new Set(
           TAB_CONFIG.safe.defaultSelection.filter((name) => state.views.safe.allSeriesNames.includes(name))
@@ -904,6 +1096,9 @@
       try {
         const payload = await loadSafePayloadFromFile(file);
         state.views.safe.payload = payload;
+        if (state.views.safe.swings === null) {
+          state.views.safe.swings = await loadDefaultSwings();
+        }
         state.views.safe.allSeriesNames = TAB_CONFIG.safe.buildSeriesNames(payload);
         state.views.safe.selectedNames = new Set(
           TAB_CONFIG.safe.defaultSelection.filter((name) => state.views.safe.allSeriesNames.includes(name))
@@ -979,6 +1174,9 @@
     for (const radio of document.querySelectorAll('input[name="layout"]')) {
       radio.addEventListener("change", renderCharts);
     }
+
+    showSwingsToggleEl.addEventListener("change", renderCharts);
+    showPivotMarkersToggleEl.addEventListener("change", renderCharts);
 
     window.addEventListener("resize", () => {
       for (const chart of state.charts) {

@@ -68,10 +68,10 @@ buttons:
       # ./sync_chain.sh
 
       source ../.venv/bin/activate
-      python src/crawler/query.py
+      python src/data/query.py
 
-      python src/run_onchain_features.py
-      python src/run_exposure.py
+      python src/core/run_onchain_features.py
+      python src/core/run_exposure.py
 
   - id: statistics-daily-run
     label: Statistics - daily run
