@@ -28,9 +28,7 @@ Current direct productive / validation usage:
 
 Current descriptive / research usage:
 
-- `relative_volume_20` and `volume_z` appear in:
-  - [safe_interpreter.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_archive/safe_interpreter.py)
-  - [safe_interpreter_v2.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_active/safe_interpreter_v2.py)
+- `relative_volume_20` and `volume_z` remain available in the retained research feature surface
 - `volume_log1p` is also available in the feature store, but the research layer mostly reasons with the normalized participation measures instead.
 
 ## Family overview

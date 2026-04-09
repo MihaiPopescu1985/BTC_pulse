@@ -1,1 +1,1 @@
-"""SAFE v4.0 research-stage code grouped into core, active, and archived layers."""
+"""SAFE v4.0 retained research-stage core for audits, interaction discovery, and swing structure."""

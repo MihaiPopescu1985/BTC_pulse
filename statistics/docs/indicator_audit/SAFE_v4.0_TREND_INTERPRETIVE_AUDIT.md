@@ -28,7 +28,6 @@ Current direct productive / validation usage:
 
 - `TS_20`, `TS_50`, `TS_200`
   - [statistics/src/core/run_states.py](/home/mihai/Documents/BTC_pulse/statistics/src/core/run_states.py)
-  - [statistics/src/walkforward/run_decision_analysis_walkforward.py](/home/mihai/Documents/BTC_pulse/statistics/src/walkforward/run_decision_analysis_walkforward.py)
 - `TS_50`, `ER_20`
   - [statistics/src/models/regime_hmm.py](/home/mihai/Documents/BTC_pulse/statistics/src/models/regime_hmm.py)
   - [statistics/src/models/hazard_calibrated.py](/home/mihai/Documents/BTC_pulse/statistics/src/models/hazard_calibrated.py)
@@ -37,11 +36,7 @@ Current direct productive / validation usage:
 
 Current descriptive / research usage:
 
-- full trend family appears in:
-  - [statistics/src/research/v4_iteration/research_archive/safe_interpreter.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_archive/safe_interpreter.py)
-  - [statistics/src/research/v4_iteration/research_active/safe_interpreter_v2.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_active/safe_interpreter_v2.py)
-- `TS_20`, `TS_50`, `TS_200` also appear in:
-  - [statistics/src/research/v4_iteration/research_active/run_decision_analysis.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_active/run_decision_analysis.py)
+- full trend family remains available in the retained research feature surface
 
 ## Reading principle
 The correct question is not only “is this used now?” but:

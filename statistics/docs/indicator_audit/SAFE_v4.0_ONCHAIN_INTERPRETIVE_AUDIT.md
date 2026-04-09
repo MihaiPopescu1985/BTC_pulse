@@ -47,20 +47,18 @@ The active production-facing fields in scope are built from those raw components
 - [run_onchain_features.py](/home/mihai/Documents/BTC_pulse/statistics/src/core/run_onchain_features.py)
   - computes and exports the on-chain feature surface
 
-### Current productive models / walkforward
-- no current direct use in `src/core/` or `src/walkforward/`
+### Current productive models
+- no current direct use in `src/core/`
 - no current direct use in `src/models/`
 
-### Research / interpreter usage
-- all six active on-chain fields are consumed in:
-  - [safe_interpreter.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_archive/safe_interpreter.py)
-  - [safe_interpreter_v2.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_active/safe_interpreter_v2.py)
+### Research usage
+- all six active on-chain fields remain available in the retained research feature surface
 
 Current status:
 
 - production-facing descriptive export
 - research / interpretive context
-- not yet integrated into accepted walk-forward logic
+- not yet integrated into the retained swing-structure bridge
 
 ## Family overview
 

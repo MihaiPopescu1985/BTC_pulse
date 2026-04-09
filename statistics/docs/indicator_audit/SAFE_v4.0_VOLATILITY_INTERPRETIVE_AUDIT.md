@@ -32,9 +32,7 @@ Current direct productive / validation usage:
 
 Current descriptive / research usage:
 
-- all seven appear in:
-  - [safe_interpreter.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_archive/safe_interpreter.py)
-  - [safe_interpreter_v2.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_active/safe_interpreter_v2.py)
+- all seven remain available in the retained research feature surface
 
 ## Family overview
 

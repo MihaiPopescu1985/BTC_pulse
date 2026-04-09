@@ -26,7 +26,6 @@ Current direct productive / validation usage:
 
 - `band_pos`
   - [run_states.py](/home/mihai/Documents/BTC_pulse/statistics/src/core/run_states.py)
-  - [run_decision_analysis_walkforward.py](/home/mihai/Documents/BTC_pulse/statistics/src/walkforward/run_decision_analysis_walkforward.py)
   - [exposure.py](/home/mihai/Documents/BTC_pulse/statistics/src/core/exposure.py)
   - [regime_hmm.py](/home/mihai/Documents/BTC_pulse/statistics/src/models/regime_hmm.py)
   - [hazard_calibrated.py](/home/mihai/Documents/BTC_pulse/statistics/src/models/hazard_calibrated.py)
@@ -39,9 +38,7 @@ Current direct productive / validation usage:
 
 Current descriptive / research usage:
 
-- all five appear in:
-  - [safe_interpreter.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_archive/safe_interpreter.py)
-  - [safe_interpreter_v2.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/research_active/safe_interpreter_v2.py)
+- all five remain available in the retained research feature surface
 
 ## Family overview
 
