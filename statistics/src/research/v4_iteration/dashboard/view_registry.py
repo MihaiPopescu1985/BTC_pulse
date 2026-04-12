@@ -165,38 +165,6 @@ VIEW_REGISTRY: dict[str, ViewDefinition] = {
         ],
         "default_threshold": 0.50,
     },
-    "reversal_proximity_predictions": {
-        "label": "Reversal Proximity Predictions",
-        "description": "Continuous buy-side and sell-side proximity estimates inside confirmed swings.",
-        "path": _relative(OUT_DIR / "swing_bottom" / "reversal_proximity_predictions.csv"),
-        "scores": [
-            "predicted_buy_distance",
-            "predicted_sell_distance",
-        ],
-        "components": [],
-        "labels": [
-            "buy_zone_within_5pct_above_low",
-            "buy_zone_within_3pct_above_low",
-            "sell_zone_within_5pct_below_high",
-            "sell_zone_within_3pct_below_high",
-        ],
-        "diagnostics": [
-            "true_buy_distance",
-            "true_sell_distance",
-            "current_confirmed_swing_id",
-            "current_confirmed_swing_direction",
-        ],
-        "default_scores": [
-            "predicted_buy_distance",
-            "predicted_sell_distance",
-        ],
-        "default_components": [],
-        "default_labels": [
-            "buy_zone_within_5pct_above_low",
-            "sell_zone_within_5pct_below_high",
-        ],
-        "default_threshold": 0.00,
-    },
     "buy_side_exploration": {
         "label": "Buy-Side Exploration",
         "description": "Bounded buy-side swing-low timing sprint comparing analog, exhaustion, ranking, and candle-memory approaches.",

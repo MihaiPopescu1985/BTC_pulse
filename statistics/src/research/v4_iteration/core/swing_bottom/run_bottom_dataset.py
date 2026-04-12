@@ -71,7 +71,11 @@ def _validate_date_frame(name: str, frame: pd.DataFrame) -> pd.DataFrame:
     return validated.sort_values("date").reset_index(drop=True)
 
 
-def load_inputs(price_json: str | Path, features_csv: str | Path, onchain_features_csv: str | Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_inputs(
+    price_json: str | Path,
+    features_csv: str | Path,
+    onchain_features_csv: str | Path,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     price = load_daily_price_json(str(price_json)).reset_index().rename(columns={"timestamp": "date"})
     price = _validate_date_frame("price", price.loc[:, ["date", "open", "high", "low", "close", "volume"]])
 
@@ -121,7 +125,10 @@ def build_enriched_taxonomy(price: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_base_dataset(price: pd.DataFrame, features: pd.DataFrame, onchain: pd.DataFrame) -> pd.DataFrame:
-    onchain_renamed = onchain.drop(columns=[column for column in ("open", "high", "low", "close", "volume") if column in onchain.columns], errors="ignore")
+    onchain_renamed = onchain.drop(
+        columns=[column for column in ("open", "high", "low", "close", "volume") if column in onchain.columns],
+        errors="ignore",
+    )
     merged = features.merge(onchain_renamed, on="date", how="inner", validate="one_to_one")
     if not merged["date"].equals(price["date"]):
         raise ValueError("Merged feature surface is not one-row-per-day aligned to the price series.")

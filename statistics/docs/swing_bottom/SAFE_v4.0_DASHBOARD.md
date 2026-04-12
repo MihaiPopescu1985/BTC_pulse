@@ -41,7 +41,9 @@ The registry currently includes:
 - `swing_playbook_layer`
 - `reversal_zone_dataset`
 - `reversal_zone_predictions`
-- `reversal_proximity_predictions`
+- `strategy_translation_layer`
+- `rule_layer`
+- `signal_layer`
 
 Each view declares:
 
