@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SAFE Research Dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f14;
+      --panel: #121821;
+      --panel-2: #1a2430;
+      --border: rgba(255,255,255,0.08);
+      --text: #edf2f9;
+      --muted: #9eb0c8;
+      --accent: #58b2ff;
+      --green: #2ecc71;
+      --red: #ff6b7a;
+      --amber: #ffbf5a;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { overflow: auto; }
+    #app { display: grid; grid-template-columns: 360px minmax(0,1fr); min-height: 100vh; height: auto; align-items: start; }
+    #sidebar { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow: auto; padding: 16px; border-right: 1px solid var(--border); background: linear-gradient(180deg, #0f151f, #0c121a); }
+    #main { min-width: 0; min-height: 100vh; display: flex; flex-direction: column; }
+    .title { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+    .subtle { color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .section { margin-top: 18px; }
+    .section-title, label { display: block; margin-bottom: 8px; color: #cbd8ea; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    select, input, button { width: 100%; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font: inherit; }
+    select, input { padding: 10px 12px; }
+    button { padding: 10px 12px; cursor: pointer; }
+    button:hover { background: var(--panel-2); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .checklist { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); display: grid; gap: 6px; max-height: 180px; overflow: auto; }
+    .checklist label { margin: 0; font-size: 13px; text-transform: none; letter-spacing: normal; font-weight: 500; display: flex; align-items: center; gap: 8px; color: var(--text); }
+    #topbar { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    #status { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #content { flex: 1 1 auto; min-height: 0; overflow: visible; padding: 14px; display: grid; gap: 14px; }
+    .card { border: 1px solid var(--border); border-radius: 16px; overflow: hidden; background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)); }
+    .card-header { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 700; }
+    .chart { width: 100%; height: 460px; }
+    #priceChart { height: 680px; }
+    #labelChart { height: 340px; }
+    #diagnostics { padding: 14px; display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+    .pill { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(88,178,255,0.12); color: #d8efff; }
+    .diag-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px 18px; }
+    .diag-item { display: grid; gap: 2px; }
+    .diag-key { color: #8da0b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .diag-value { color: var(--text); font-size: 13px; }
+    @media (max-width: 1280px) {
+      #app { grid-template-columns: 320px minmax(0,1fr); }
+      .chart { height: 420px; }
+      #priceChart { height: 620px; }
+    }
+    @media (max-width: 980px) {
+      #app { grid-template-columns: 1fr; }
+      #sidebar { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--border); }
+      #main { min-height: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <h1 class="title">SAFE Research Dashboard</h1>
+      <div class="subtle" id="viewDescription">Loading registry...</div>
+
+      <div class="section">
+        <label for="viewSelect">Dataset View</label>
+        <select id="viewSelect"></select>
+      </div>
+
+      <div class="section">
+        <div class="row">
+          <div>
+            <label for="startDate">Start Date</label>
+            <input id="startDate" type="date" />
+          </div>
+          <div>
+            <label for="endDate">End Date</label>
+            <input id="endDate" type="date" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <button id="applyRangeButton" type="button">Apply Range</button>
+          <button id="resetRangeButton" type="button">Reset</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <label for="thresholdInput">Signal Threshold</label>
+        <input id="thresholdInput" type="number" step="0.05" min="0" max="1" value="0.75" />
+      </div>
+
+      <div class="section">
+        <div class="section-title">Scores</div>
+        <div id="scoresChecklist" class="checklist"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Components</div>
+        <div id="componentsChecklist" class="checklist"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Labels</div>
+        <div id="labelsChecklist" class="checklist"></div>
+      </div>
+
+      <div class="section">
+        <div class="pill" id="summaryPill">No data loaded</div>
+      </div>
+    </aside>
+
+    <main id="main">
+      <div id="topbar">
+        <div class="title" id="mainTitle" style="margin:0; font-size:16px;">Reusable SAFE research dashboard</div>
+        <div id="status">Loading...</div>
+      </div>
+      <div id="content">
+        <div class="card">
+          <div class="card-header">Price</div>
+          <div id="priceChart" class="chart"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">Scores</div>
+          <div id="scoreChart" class="chart"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">Components</div>
+          <div id="componentChart" class="chart"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">Labels / Truth</div>
+          <div id="labelChart" class="chart"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">Diagnostics</div>
+          <div id="diagnostics"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script>
+    const state = {
+      config: null,
+      payload: null,
+      filteredIndex: [],
+      charts: {},
+      chartGroup: `safe-research-${Date.now()}`,
+      selectedScores: new Set(),
+      selectedComponents: new Set(),
+      selectedLabels: new Set(),
+      threshold: 0.75,
+      hoveredIndex: null
+    };
+
+    const elements = {
+      viewSelect: document.getElementById("viewSelect"),
+      viewDescription: document.getElementById("viewDescription"),
+      startDate: document.getElementById("startDate"),
+      endDate: document.getElementById("endDate"),
+      applyRangeButton: document.getElementById("applyRangeButton"),
+      resetRangeButton: document.getElementById("resetRangeButton"),
+      thresholdInput: document.getElementById("thresholdInput"),
+      scoresChecklist: document.getElementById("scoresChecklist"),
+      componentsChecklist: document.getElementById("componentsChecklist"),
+      labelsChecklist: document.getElementById("labelsChecklist"),
+      summaryPill: document.getElementById("summaryPill"),
+      status: document.getElementById("status"),
+      diagnostics: document.getElementById("diagnostics"),
+      mainTitle: document.getElementById("mainTitle")
+    };
+
+    function setStatus(text) {
+      elements.status.textContent = text;
+    }
+
+    function formatValue(value) {
+      if (value === null || value === undefined || Number.isNaN(value)) return "n/a";
+      if (typeof value === "number") {
+        if (Math.abs(value) >= 1000) return value.toFixed(2);
+        if (Math.abs(value) >= 1) return value.toFixed(4);
+        return value.toFixed(6);
+      }
+      return String(value);
+    }
+
+    async function fetchJson(path) {
+      const response = await fetch(path, { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || `Request failed: ${response.status}`);
+      }
+      return payload;
+    }
+
+    function initCharts() {
+      state.charts.price = echarts.init(document.getElementById("priceChart"));
+      state.charts.score = echarts.init(document.getElementById("scoreChart"));
+      state.charts.component = echarts.init(document.getElementById("componentChart"));
+      state.charts.label = echarts.init(document.getElementById("labelChart"));
+      Object.values(state.charts).forEach((chart) => {
+        chart.group = state.chartGroup;
+        chart.on("updateAxisPointer", ({ axesInfo }) => {
+          if (!axesInfo || !axesInfo.length) return;
+          const axisInfo = axesInfo[0];
+          if (!Number.isInteger(axisInfo.value)) return;
+          state.hoveredIndex = axisInfo.value;
+          renderDiagnostics();
+        });
+      });
+      echarts.connect(state.chartGroup);
+      window.addEventListener("resize", () => {
+        Object.values(state.charts).forEach((chart) => chart.resize());
+      });
+    }
+
+    function seriesAt(column, indexes) {
+      return indexes.map((idx) => state.payload.series[column]?.[idx] ?? null);
+    }
+
+    function priceAt(field, indexes) {
+      return indexes.map((idx) => state.payload.price[field]?.[idx] ?? null);
+    }
+
+    function buildChecklist(container, names, selectedSet) {
+      container.innerHTML = "";
+      if (!names.length) {
+        container.textContent = "No columns in this group.";
+        return;
+      }
+      names.forEach((name) => {
+        const label = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.checked = selectedSet.has(name);
+        input.addEventListener("change", () => {
+          if (input.checked) selectedSet.add(name);
+          else selectedSet.delete(name);
+          renderAll();
+        });
+        label.appendChild(input);
+        label.appendChild(document.createTextNode(name));
+        container.appendChild(label);
+      });
+    }
+
+    function populateControls() {
+      const view = state.payload.view;
+      elements.viewDescription.textContent = view.description || "No description.";
+      elements.mainTitle.textContent = view.label;
+      elements.thresholdInput.value = Number(view.default_threshold ?? 0.75).toFixed(2);
+      state.threshold = Number(elements.thresholdInput.value);
+
+      state.selectedScores = new Set((view.default_scores || view.scores || []).filter(Boolean));
+      state.selectedComponents = new Set((view.default_components || view.components || []).filter(Boolean));
+      state.selectedLabels = new Set((view.default_labels || view.labels || []).filter(Boolean));
+
+      buildChecklist(elements.scoresChecklist, view.scores || [], state.selectedScores);
+      buildChecklist(elements.componentsChecklist, view.components || [], state.selectedComponents);
+      buildChecklist(elements.labelsChecklist, view.labels || [], state.selectedLabels);
+    }
+
+    function applyDateFilter() {
+      const allDates = state.payload.dates;
+      const start = elements.startDate.value || allDates[0];
+      const end = elements.endDate.value || allDates[allDates.length - 1];
+      state.filteredIndex = allDates
+        .map((date, index) => ({ date, index }))
+        .filter((row) => row.date >= start && row.date <= end)
+        .map((row) => row.index);
+      if (!state.filteredIndex.length) {
+        state.filteredIndex = allDates.map((_, index) => index);
+      }
+    }
+
+    function buildSwingLines(indexes, dates, lows, highs) {
+      const up = [];
+      const down = [];
+      const pivotMarkers = [];
+      const swings = state.payload.swings || [];
+      if (!Array.isArray(swings) || !swings.length) return { up, down, pivotMarkers };
+      const indexByDate = new Map(dates.map((date, idx) => [date, idx]));
+      for (const swing of swings) {
+        const startIdx = indexByDate.get(swing.start_date);
+        const endIdx = indexByDate.get(swing.end_date);
+        if (startIdx == null || endIdx == null) continue;
+        const isUp = String(swing.direction || "").toLowerCase() === "up";
+        const startValue = isUp ? lows[startIdx] : highs[startIdx];
+        const endValue = isUp ? highs[endIdx] : lows[endIdx];
+        const segment = [
+          [dates[startIdx], startValue],
+          [dates[endIdx], endValue],
+          [null, null]
+        ];
+        if (isUp) up.push(...segment);
+        else down.push(...segment);
+        pivotMarkers.push({
+          value: [dates[startIdx], startValue],
+          itemStyle: { color: isUp ? "#2ecc71" : "#ff6b7a" }
+        });
+        pivotMarkers.push({
+          value: [dates[endIdx], endValue],
+          itemStyle: { color: isUp ? "#2ecc71" : "#ff6b7a" }
+        });
+      }
+      return { up, down, pivotMarkers };
+    }
+
+    function renderPriceChart() {
+      const indexes = state.filteredIndex;
+      const dates = indexes.map((idx) => state.payload.dates[idx]);
+      const open = priceAt("open", indexes);
+      const high = priceAt("high", indexes);
+      const low = priceAt("low", indexes);
+      const close = priceAt("close", indexes);
+      const candlestick = indexes.map((idx) => [
+        state.payload.price.open[idx],
+        state.payload.price.close[idx],
+        state.payload.price.low[idx],
+        state.payload.price.high[idx]
+      ]);
+
+      const threshold = state.threshold;
+      const signalSeries = [];
+      for (const name of state.selectedScores) {
+        const values = seriesAt(name, indexes);
+        const points = [];
+        values.forEach((value, localIdx) => {
+          if (typeof value !== "number" || value < threshold) return;
+          const y = name.includes("buy") ? low[localIdx] : high[localIdx];
+          points.push([dates[localIdx], y, value]);
+        });
+        signalSeries.push({
+          name,
+          type: "scatter",
+          symbolSize: 8,
+          data: points,
+          encode: { x: 0, y: 1, tooltip: 2 },
+          itemStyle: { color: name.includes("buy") ? "#2ecc71" : "#ff6b7a" },
+          tooltip: { valueFormatter: (val) => formatValue(val) }
+        });
+      }
+
+      const { up, down, pivotMarkers } = buildSwingLines(indexes, dates, low, high);
+      const option = {
+        animation: false,
+        legend: { top: 6, textStyle: { color: "#cbd8ea" } },
+        tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+        toolbox: {
+          right: 12,
+          feature: {
+            dataZoom: { yAxisIndex: "none" },
+            restore: {},
+            saveAsImage: {}
+          },
+          iconStyle: { borderColor: "#cbd8ea" }
+        },
+        dataZoom: [
+          { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: true },
+          { type: "slider", xAxisIndex: 0, bottom: 12, height: 24 }
+        ],
+        xAxis: { type: "category", data: dates, boundaryGap: false },
+        yAxis: { scale: true },
+        series: [
+          {
+            name: "BTC OHLC",
+            type: "candlestick",
+            data: candlestick,
+            itemStyle: {
+              color: "#2ecc71",
+              color0: "#ff6b7a",
+              borderColor: "#2ecc71",
+              borderColor0: "#ff6b7a"
+            }
+          },
+          {
+            name: "Up swings",
+            type: "line",
+            data: up,
+            showSymbol: false,
+            connectNulls: false,
+            lineStyle: { color: "#2ecc71", width: 1.5, opacity: 0.7 }
+          },
+          {
+            name: "Down swings",
+            type: "line",
+            data: down,
+            showSymbol: false,
+            connectNulls: false,
+            lineStyle: { color: "#ff6b7a", width: 1.5, opacity: 0.7 }
+          },
+          {
+            name: "Pivot markers",
+            type: "scatter",
+            data: pivotMarkers,
+            symbolSize: 5,
+            tooltip: { show: false }
+          },
+          ...signalSeries
+        ]
+      };
+      state.charts.price.setOption(option, true);
+    }
+
+    function buildLineSeries(selectedSet, indexes, colorSeed = 0) {
+      const palette = ["#58b2ff", "#2ecc71", "#ffbf5a", "#ff6b7a", "#ac92ff", "#45d1c7", "#f78fb3", "#8bc34a"];
+      return Array.from(selectedSet).map((name, seriesIndex) => ({
+        name,
+        type: "line",
+        showSymbol: false,
+        smooth: false,
+        data: seriesAt(name, indexes).map((value, idx) => [state.payload.dates[indexes[idx]], value]),
+        lineStyle: { width: 1.8, color: palette[(seriesIndex + colorSeed) % palette.length] }
+      }));
+    }
+
+    function renderLineChart(chart, selectedSet, titleMode) {
+      const indexes = state.filteredIndex;
+      const dates = indexes.map((idx) => state.payload.dates[idx]);
+      chart.setOption({
+        animation: false,
+        legend: { top: 6, textStyle: { color: "#cbd8ea" } },
+        tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+        toolbox: {
+          right: 12,
+          feature: {
+            dataZoom: { yAxisIndex: "none" },
+            restore: {},
+            saveAsImage: {}
+          },
+          iconStyle: { borderColor: "#cbd8ea" }
+        },
+        dataZoom: [
+          { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: true, moveOnMouseMove: true },
+          { type: "slider", xAxisIndex: 0, bottom: 12, height: 24 }
+        ],
+        xAxis: { type: "category", data: dates, boundaryGap: false },
+        yAxis: { type: "value", scale: true, min: titleMode === "labels" ? 0 : null },
+        series: titleMode === "labels"
+          ? Array.from(selectedSet).map((name, idx) => ({
+              name,
+              type: "line",
+              step: "end",
+              showSymbol: false,
+              data: seriesAt(name, indexes).map((value, localIdx) => [state.payload.dates[indexes[localIdx]], (value || 0) + idx * 1.2]),
+              lineStyle: { width: 2 },
+              areaStyle: { opacity: 0.12 }
+            }))
+          : buildLineSeries(selectedSet, indexes, titleMode === "components" ? 2 : 0)
+      }, true);
+    }
+
+    function renderDiagnostics() {
+      const indexes = state.filteredIndex;
+      const idx = Number.isInteger(state.hoveredIndex) ? indexes[state.hoveredIndex] : indexes[indexes.length - 1];
+      if (idx == null) {
+        elements.diagnostics.textContent = "No data selected.";
+        return;
+      }
+      const diagnostics = state.payload.view.diagnostics || [];
+      const keyValues = [
+        ["date", state.payload.dates[idx]],
+        ["close", state.payload.price.close[idx]],
+        ...Array.from(state.selectedScores).map((name) => [name, state.payload.series[name]?.[idx]]),
+        ...Array.from(state.selectedComponents).map((name) => [name, state.payload.series[name]?.[idx]]),
+        ...Array.from(state.selectedLabels).map((name) => [name, state.payload.series[name]?.[idx]]),
+        ...diagnostics.map((name) => [name, state.payload.series[name]?.[idx]])
+      ];
+      elements.diagnostics.innerHTML = `<div class="diag-grid">${
+        keyValues.map(([key, value]) => `
+          <div class="diag-item">
+            <div class="diag-key">${key}</div>
+            <div class="diag-value">${formatValue(value)}</div>
+          </div>`).join("")
+      }</div>`;
+    }
+
+    function renderAll() {
+      applyDateFilter();
+      renderPriceChart();
+      renderLineChart(state.charts.score, state.selectedScores, "scores");
+      renderLineChart(state.charts.component, state.selectedComponents, "components");
+      renderLineChart(state.charts.label, state.selectedLabels, "labels");
+      renderDiagnostics();
+      const view = state.payload.view;
+      elements.summaryPill.textContent = `${view.label} | ${state.filteredIndex.length} rows | source ${view.path}`;
+      setStatus(`Loaded ${view.label}`);
+    }
+
+    async function loadView(viewName) {
+      setStatus(`Loading ${viewName}...`);
+      const payload = await fetchJson(`/api/data?view=${encodeURIComponent(viewName)}`);
+      state.payload = payload;
+      elements.startDate.value = payload.dates[0];
+      elements.endDate.value = payload.dates[payload.dates.length - 1];
+      populateControls();
+      renderAll();
+    }
+
+    async function loadConfig() {
+      const config = await fetchJson("/api/config");
+      state.config = config;
+      elements.viewSelect.innerHTML = config.views
+        .map((view) => `<option value="${view.name}">${view.label}</option>`)
+        .join("");
+      elements.viewSelect.value = config.active_view;
+      await loadView(config.active_view);
+    }
+
+    elements.viewSelect.addEventListener("change", async () => {
+      await loadView(elements.viewSelect.value);
+    });
+    elements.thresholdInput.addEventListener("change", () => {
+      state.threshold = Number(elements.thresholdInput.value) || 0;
+      renderAll();
+    });
+    elements.applyRangeButton.addEventListener("click", () => renderAll());
+    elements.resetRangeButton.addEventListener("click", () => {
+      elements.startDate.value = state.payload.dates[0];
+      elements.endDate.value = state.payload.dates[state.payload.dates.length - 1];
+      renderAll();
+    });
+
+    initCharts();
+    loadConfig().catch((error) => {
+      setStatus(error.message);
+      elements.diagnostics.textContent = error.message;
+    });
+  </script>
+</body>
+</html>
