@@ -12,7 +12,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
-ROOT = Path(__file__).resolve().parents[5]
+ROOT = Path(__file__).resolve().parents[4]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -23,7 +23,7 @@ from src.path_config import (
     DEFAULT_REVERSAL_ZONE_DATASET_CSV_PATH,
     STATISTICS_DIR,
 )
-from src.research.v4_iteration.core.swing_bottom.run_reversal_zone_models import (
+from src.research.v4_iteration.productive.run_reversal_zone_models import (
     DEFAULT_BUY_STRICT_TARGET,
     DEFAULT_BUY_TARGET,
     build_feature_columns,
@@ -33,7 +33,7 @@ from src.research.v4_iteration.core.swing_bottom.run_reversal_zone_models import
     prepare_feature_frames,
     validate_retained_feature_columns,
 )
-from src.research.v4_iteration.core.swing_bottom.run_swing_extreme_timing import (
+from src.research.v4_iteration.productive.run_swing_extreme_timing import (
     DEFAULT_ANALOG_FORWARD_DAYS,
     DEFAULT_ANALOG_TOP_K,
     DEFAULT_ANALOG_WINDOW,

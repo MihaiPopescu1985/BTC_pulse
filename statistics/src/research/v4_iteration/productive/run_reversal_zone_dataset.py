@@ -7,7 +7,7 @@ import sys
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[5]
+ROOT = Path(__file__).resolve().parents[4]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -19,7 +19,7 @@ from src.path_config import (
     DEFAULT_REVERSAL_ZONE_DATASET_CSV_PATH,
     STATISTICS_DIR,
 )
-from src.research.v4_iteration.core.swing_bottom.run_bottom_dataset import (
+from src.research.v4_iteration.productive.run_bottom_dataset import (
     build_base_dataset,
     build_enriched_taxonomy,
     load_inputs,

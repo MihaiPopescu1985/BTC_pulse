@@ -22,6 +22,7 @@
 - retained foundational outputs for features, models, states, swings, and swing mapping
 - retained swing-bottom reference chain: reversal-zone dataset, swing-extreme timing, buy-side hybrid source chain, decision/playbook/operational/rule/signal layers
 - retained reusable dashboard and next-iteration path note
+- productive SAFE v4.0 scripts are now grouped under `src/research/v4_iteration/productive/`
 
 ## Current scope
 

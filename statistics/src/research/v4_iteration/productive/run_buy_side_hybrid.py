@@ -11,7 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-ROOT = Path(__file__).resolve().parents[5]
+ROOT = Path(__file__).resolve().parents[4]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -22,11 +22,11 @@ from src.path_config import (
     DEFAULT_BUY_SIDE_HYBRID_SWING_SUMMARY_CSV_PATH,
     STATISTICS_DIR,
 )
-from src.research.v4_iteration.core.swing_bottom.run_reversal_zone_models import (
+from src.research.v4_iteration.productive.run_reversal_zone_models import (
     DEFAULT_BUY_STRICT_TARGET,
     DEFAULT_BUY_TARGET,
 )
-from src.research.v4_iteration.core.swing_bottom.run_swing_extreme_timing import THRESHOLDS, TOP_BUCKETS, clip01
+from src.research.v4_iteration.productive.run_swing_extreme_timing import THRESHOLDS, TOP_BUCKETS, clip01
 
 
 DEFAULT_BUY_SIDE_HYBRID_MD_PATH = STATISTICS_DIR / "docs" / "swing_bottom" / "SAFE_v4.0_BUY_SIDE_HYBRID.md"

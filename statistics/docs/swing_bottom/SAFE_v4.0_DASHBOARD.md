@@ -35,12 +35,10 @@ python statistics/src/research/v4_iteration/dashboard/run_dashboard.py --check
 The registry currently includes:
 
 - `swing_extreme_timing`
-- `buy_side_exploration`
 - `buy_side_hybrid`
 - `swing_decision_layer`
 - `swing_playbook_layer`
 - `reversal_zone_dataset`
-- `reversal_zone_predictions`
 - `strategy_translation_layer`
 - `rule_layer`
 - `signal_layer`
