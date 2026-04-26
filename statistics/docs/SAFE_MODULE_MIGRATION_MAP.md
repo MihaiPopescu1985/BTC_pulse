@@ -1,0 +1,314 @@
+# SAFE Module Migration Map
+
+## 1. Purpose
+
+This document is a pre-move classification map for SAFE. It does not mean the repository has already been restructured.
+
+Its purpose is to answer, before any file moves:
+
+- which current modules produce each retained contract
+- which current modules consume each retained contract
+- which target domain each module should belong to
+- which modules should later move, split, merge, remain research-only, or be reviewed further
+
+This is the control document for the next restructuring steps.
+
+Status note:
+
+- first actual restructuring move completed for clean foundation producers
+- swing detection, live swing state, swing taxonomy, and shared swing helpers now have new homes under `src/foundation/`
+- old paths remain available through compatibility wrappers during the migration period
+- foundation outputs were regenerated from the new `src/foundation/` entrypoints
+- strict retained foundation contracts now pass with research-only outputs marked optional
+
+## 2. Target Domains
+
+The target domains remain:
+
+- `data`
+- `features`
+- `models`
+- `foundation`
+- `signals`
+- `pipelines`
+- `research`
+- `dashboard`
+- `util`
+
+The intent is still:
+
+- stable responsibilities at the top level
+- retained signal chain as a first-class domain
+- research isolated from default paths
+- downstream layers consuming normalized features, not raw sources
+
+## 3. Contract Ownership Map
+
+### Feature Surface Contracts
+
+Contract scope:
+
+- `features.csv`
+- `onchain_features.csv`
+- productive `targets.csv`
+- productive `states.csv`
+
+Likely current producers:
+
+- `src/core/run_features.py`
+- `src/features/price_features.py`
+- `src/core/run_onchain_features.py`
+- `src/core/run_regime_hmm.py`
+- `src/core/run_hazard_train.py`
+- `src/core/run_targets.py`
+- `src/core/run_states.py`
+- `src/models/regime_hmm.py`
+- `src/models/hazard_calibrated.py`
+
+Likely current consumers:
+
+- `src/research/v4_iteration/productive/run_reversal_zone_dataset.py`
+- `src/research/v4_iteration/productive/run_bottom_dataset.py`
+- `src/research/v4_iteration/core/swing_bridge/run_swing_condition_mapping.py`
+- any future retained signal/foundation pipelines
+
+Target domain ownership:
+
+- primary owner: `features`
+- supporting owners: `data`, `models`, `pipelines`
+
+Ownership note:
+
+- `targets.csv` and `states.csv` should not be treated as part of the causal feature surface contract itself. They are productive downstream outputs and should later live under a separate state/target contract family.
+
+### Swing / Structure Foundation Contracts
+
+Contract scope:
+
+- `swings.csv`
+- `live_swing_state.csv`
+- `swing_taxonomy.csv`
+- `swing_condition_mapping.csv`
+- optional `swing_sensitivity_summary.csv`
+
+Likely current producers:
+
+- `src/research/v4_iteration/core/swing_detection/run_swing_detection.py`
+- `src/research/v4_iteration/core/swing_detection/run_swing_sensitivity.py`
+- `src/research/v4_iteration/core/swing_bridge/run_live_swing_state.py`
+- `src/research/v4_iteration/core/swing_bridge/run_swing_taxonomy.py`
+- `src/research/v4_iteration/core/swing_bridge/run_swing_condition_mapping.py`
+- `src/research/v4_iteration/core/swing_bridge/swing_bridge_common.py`
+
+Likely current consumers:
+
+- `src/research/v4_iteration/productive/run_bottom_dataset.py`
+- `src/research/v4_iteration/productive/run_reversal_zone_dataset.py`
+- `src/research/v4_iteration/productive/run_swing_extreme_timing.py`
+- dashboard swing overlays and view diagnostics
+- future transition-detection research
+
+Target domain ownership:
+
+- primary owner: `foundation`
+- supporting owners: `pipelines`, `dashboard`
+
+Ownership note:
+
+- `run_swing_condition_mapping.py` is structurally related to swing foundation, but its output is more interpretive/research-facing than default-runtime foundational. It is a likely `research` candidate even if it continues to consume foundation contracts.
+
+### Signal Stack Contracts
+
+Contract scope:
+
+- `reversal_zone_dataset.csv`
+- `reversal_zone_predictions.csv`
+- `swing_extreme_timing.csv`
+- `buy_side_hybrid_scores.csv`
+- `swing_decision_layer.csv`
+- `swing_playbook_layer.csv`
+- `strategy_translation_layer.csv`
+- `rule_layer.csv`
+- `signal_layer.csv`
+
+Likely current producers:
+
+- `src/research/v4_iteration/productive/run_reversal_zone_dataset.py`
+- `src/research/v4_iteration/productive/run_reversal_zone_models.py`
+- `src/research/v4_iteration/productive/run_swing_extreme_timing.py`
+- `src/research/v4_iteration/productive/run_buy_side_exploration.py`
+- `src/research/v4_iteration/productive/run_buy_side_hybrid.py`
+- `src/research/v4_iteration/productive/run_swing_decision_layer.py`
+- `src/research/v4_iteration/productive/run_swing_playbook_layer.py`
+- `src/research/v4_iteration/productive/run_strategy_translation_layer.py`
+- `src/research/v4_iteration/productive/run_rule_layer.py`
+- `src/research/v4_iteration/productive/run_signal_layer.py`
+
+Likely current consumers:
+
+- downstream signal-layer scripts in the retained chain
+- dashboard registered retained views
+- future transition-detection work using retained signal states as context
+
+Target domain ownership:
+
+- primary owner: `signals`
+- supporting owners: `foundation`, `features`, `models`, `dashboard`, `pipelines`
+
+Ownership note:
+
+- `run_buy_side_exploration.py` is currently upstream of the retained buy hybrid, but architecturally it still contains exploration logic. It is a likely split candidate: reusable promoted-buy feature generation into `signals`, experiment comparison/reporting into `research`.
+
+### Dashboard-Facing Contracts
+
+Contract scope:
+
+- registered daily retained views in `view_registry.py`
+- dashboard-compatible date-aligned CSVs with stable score/state/diagnostic groups
+
+Likely current producers:
+
+- retained signal-stack scripts above
+- selected foundation outputs for overlays/diagnostics
+- `src/research/v4_iteration/dashboard/view_registry.py`
+
+Likely current consumers:
+
+- `src/research/v4_iteration/dashboard/run_dashboard.py`
+- `src/research/v4_iteration/dashboard/dashboard_utils.py`
+- human-facing inspection workflows
+
+Target domain ownership:
+
+- primary owner: `dashboard`
+- data producers remain owned by `signals` or `foundation`
+
+Ownership note:
+
+- the dashboard owns registration and display contracts, not the underlying signal/foundation data semantics.
+
+## 4. Current Module Classification Table
+
+| Current path | Current responsibility | Target domain | Produces contract(s) | Consumes contract(s) | Recommended action | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `src/data/loaders.py` | raw source loading and validation | `data` | raw source frames | none | `move_later` | clean fit for source adapter layer |
+| `src/data/binance.py` | source-specific exchange adapter | `data` | raw source frames | none | `move_later` | should stay source-boundary only |
+| `src/data/query.py` | source acquisition/query support | `data` | raw source frames | none | `move_later` | keep source-specific logic out of downstream layers |
+| `src/data/feature_store.py` | CSV export/load helpers | `util` | file I/O helpers | all CSV-producing layers | `review_needed` | could live in `util` or `pipelines` support, not core domain logic |
+| `src/features/price_features.py` | causal price feature construction | `features` | feature surface | raw price data | `move_later` | clear owner for normalized price features |
+| `src/models/regime_hmm.py` | HMM model logic | `models` | model outputs / model pack | feature surface | `move_later` | stable predictive model code |
+| `src/models/hazard_calibrated.py` | hazard model logic | `models` | model outputs / model pack | feature surface | `move_later` | stable predictive model code |
+| `src/core/run_features.py` | feature pipeline entrypoint | `pipelines` | `features.csv` | `data`, `features`, `models` | `move_later` | orchestration, not feature logic |
+| `src/core/run_onchain_features.py` | on-chain feature pipeline entrypoint | `pipelines` | `onchain_features.csv` | `data`, `features` | `move_later` | orchestration, not source logic |
+| `src/core/run_regime_hmm.py` | HMM training/scoring entrypoint | `pipelines` | productive HMM outputs | feature surface, models | `move_later` | should later sit beside other pipeline runners |
+| `src/core/run_hazard_train.py` | hazard training/scoring entrypoint | `pipelines` | productive hazard outputs | feature surface, models | `move_later` | same orchestration role |
+| `src/core/run_targets.py` | productive target generation | `pipelines` | `targets.csv` | feature/model outputs | `move_later` | boundary note: targets are not causal feature surface |
+| `src/core/run_states.py` | productive state generation | `pipelines` | `states.csv` | feature/model outputs | `move_later` | boundary note: states are productive state outputs, not raw features |
+| `src/core/exposure.py` | exposure logic | `signals` | exposure state | model/state contracts | `review_needed` | outside retained v4 signal chain but downstream-facing |
+| `src/core/run_exposure.py` | exposure pipeline entrypoint | `pipelines` | exposure output | `core/exposure.py`, productive states | `review_needed` | may remain outside retained swing-signal chain |
+| `src/contracts/safe_v4.py` | retained contract definitions/checks | `util` | contract-validation layer | path config, dashboard registry | `keep_current_for_now` | useful before refactor; later could move under `util` or `pipelines/validation` |
+| `src/contracts/run_contract_checks.py` | contract-check runner | `pipelines` | validation CLI | contract definitions | `keep_current_for_now` | runtime validation helper, not domain logic |
+| `src/research/v4_iteration/core/swing_detection/run_swing_detection.py` | confirmed swing extraction | `foundation` | `swings.csv` | price source | `move_later` | one of the cleanest first move candidates |
+| `src/research/v4_iteration/core/swing_detection/run_swing_sensitivity.py` | swing sensitivity grid | `research` | `swing_sensitivity_summary.csv` | swing detection | `research_only` | useful analysis, not default foundation runtime |
+| `src/research/v4_iteration/core/swing_bridge/swing_bridge_common.py` | swing taxonomy/mapping helpers | `foundation` | reusable structure helpers | swings | `move_later` | core reusable structure logic |
+| `src/research/v4_iteration/core/swing_bridge/run_live_swing_state.py` | causal live swing-state generation | `foundation` | `live_swing_state.csv` | swings, price | `move_later` | clean foundation producer |
+| `src/research/v4_iteration/core/swing_bridge/run_swing_taxonomy.py` | swing taxonomy export | `foundation` | `swing_taxonomy.csv` | swings, common helpers | `move_later` | clean foundation producer |
+| `src/research/v4_iteration/core/swing_bridge/run_swing_condition_mapping.py` | condition-to-swing interpretive mapping | `research` | `swing_condition_mapping.csv` | features, on-chain, live state, taxonomy | `research_only` | semantically useful, but not required in default retained signal chain |
+| `src/research/v4_iteration/core/indicator_audit/run_indicator_reliability.py` | indicator audit analysis | `research` | audit outputs/docs | feature surfaces | `research_only` | not a runtime dependency of retained signal chain |
+| `src/research/v4_iteration/core/interaction_discovery/run_interaction_discovery.py` | interaction discovery analysis | `research` | interaction outputs | feature surfaces | `research_only` | not part of retained default chain |
+| `src/research/v4_iteration/core/interaction_discovery/trend_state_v1.py` | trend-state experiment/helper | `research` | exploratory feature logic | feature surfaces | `archive_later` | likely iteration-history artifact |
+| `src/research/v4_iteration/productive/run_bottom_dataset.py` | legacy bottom-dataset builder and shared helpers | `signals` | optional bottom dataset, shared helper functions | features, on-chain, foundation | `split_later` | reusable helper pieces support reversal-zone dataset; legacy bottom dataset output is not retained default chain |
+| `src/research/v4_iteration/productive/run_reversal_zone_dataset.py` | retained reversal-zone feature/label surface | `signals` | `reversal_zone_dataset.csv` | feature surface, live state, taxonomy, bottom helpers | `move_later` | retained signal-chain starting point |
+| `src/research/v4_iteration/productive/run_reversal_zone_models.py` | retained reversal-zone baseline models and helper functions | `signals` | `reversal_zone_predictions.csv`, model helper logic | reversal-zone dataset | `split_later` | mixes reusable model helpers with reporting/orchestration |
+| `src/research/v4_iteration/productive/run_swing_extreme_timing.py` | retained timing layer | `signals` | `swing_extreme_timing.csv` | reversal-zone dataset, model helpers | `split_later` | mixes core timing logic, analog engine, evaluation, reporting |
+| `src/research/v4_iteration/productive/run_buy_side_exploration.py` | exploration pass that still feeds retained hybrid | `signals` | `buy_side_exploration_scores.csv` | reversal-zone dataset, timing helpers | `split_later` | reusable promoted-buy ingredients should later graduate; comparison/reporting should move to research |
+| `src/research/v4_iteration/productive/run_buy_side_hybrid.py` | promoted buy-side timing reference | `signals` | `buy_side_hybrid_scores.csv` | buy-side exploration scores | `split_later` | retained result, but current file still reflects hybrid-experiment history |
+| `src/research/v4_iteration/productive/run_swing_decision_layer.py` | buy/sell timing interaction states | `signals` | `swing_decision_layer.csv` | hybrid scores, swing-extreme timing | `move_later` | clean retained downstream layer |
+| `src/research/v4_iteration/productive/run_swing_playbook_layer.py` | human-readable playbook interpretation | `signals` | `swing_playbook_layer.csv` | decision layer | `move_later` | clean retained downstream layer |
+| `src/research/v4_iteration/productive/run_strategy_translation_layer.py` | operational translation states | `signals` | `strategy_translation_layer.csv` | playbook layer | `move_later` | clean retained downstream layer |
+| `src/research/v4_iteration/productive/run_rule_layer.py` | explicit permission/block rule layer | `signals` | `rule_layer.csv` | strategy translation layer | `move_later` | clean retained downstream layer |
+| `src/research/v4_iteration/productive/run_signal_layer.py` | discrete signal realization layer | `signals` | `signal_layer.csv` | rule layer | `move_later` | retained end of current chain |
+| `src/research/v4_iteration/dashboard/view_registry.py` | retained dashboard view contract definitions | `dashboard` | dashboard-facing contract registry | signal/foundation output names | `move_later` | should later sit in top-level dashboard domain |
+| `src/research/v4_iteration/dashboard/dashboard_utils.py` | dashboard payload/registry helpers | `dashboard` | dashboard runtime helpers | registry, output CSVs, price data | `move_later` | reusable inspection support |
+| `src/research/v4_iteration/dashboard/run_dashboard.py` | dashboard entrypoint/server | `dashboard` | local UI runtime | dashboard utils, registered CSVs | `move_later` | clear top-level dashboard candidate |
+| `src/research/v4_iteration/dashboard/static/index.html` | dashboard UI asset | `dashboard` | UI asset | dashboard API | `move_later` | clean dashboard domain asset |
+
+## 5. Boundary Corrections / Design Notes
+
+### `targets.csv` Should Not Be A Causal Feature Contract
+
+`targets.csv` is a productive downstream label/target surface. It is not part of the normalized causal feature surface. The contract checker already treats it as a separate optional output, and the later architecture should keep that separation explicit.
+
+### `states.csv` Should Be A Productive State Contract
+
+`states.csv` is not a raw feature surface either. It is a downstream productive state output and should later be grouped with productive state/output contracts rather than base features.
+
+### Indicator Audit And Interaction Discovery Should Be Classified As Research
+
+These modules are informative and useful, but they are not runtime dependencies of the retained signal chain. They should be treated as `research`, not ambiguous pseudo-foundation modules.
+
+### Swing Condition Mapping Is More Interpretive Than Foundational
+
+`run_swing_condition_mapping.py` consumes foundation outputs, but it behaves more like interpretive research than a default foundational runtime producer. It should likely remain under `research` even if it stays close to swing foundation code.
+
+### `run_bottom_dataset.py` Has A Boundary Problem
+
+It currently mixes:
+
+- a legacy bottom-dataset CLI that is no longer part of the retained default chain
+- reusable helper logic consumed by `run_reversal_zone_dataset.py`
+
+This is a clear future split candidate.
+
+### `run_reversal_zone_models.py` And `run_swing_extreme_timing.py` Also Mix Responsibilities
+
+Both files contain:
+
+- reusable logic
+- orchestration
+- evaluation/reporting
+
+These are good later split candidates once directory/domain moves are done.
+
+### `run_buy_side_exploration.py` Is Upstream But Still Architecturally Research-Shaped
+
+The retained promoted buy-side hybrid currently depends on artifacts produced by a module whose boundary is still exploration-oriented. That should be corrected later by extracting the reusable promoted-buy score logic into `signals` and leaving comparison/reporting under `research`.
+
+### Contracts Module Is A Cross-Cutting Support Layer
+
+`src/contracts/` is useful now, but it is not one of the long-term business domains. It should later be folded into either:
+
+- `util/validation`
+- or `pipelines/validation`
+
+For now it should stay in place because it reduces migration risk.
+
+## 6. Proposed First Actual Move Step
+
+Current status:
+
+- completed
+- next move should begin after validating the new foundation location against regenerated foundation outputs
+
+The safest first actual restructuring step after this mapping is:
+
+1. Create the target top-level domain skeleton only:
+   - `src/foundation/`
+   - `src/signals/`
+   - `src/pipelines/`
+   - `src/dashboard/`
+2. Move the cleanest foundation modules first:
+   - swing detection
+   - live swing state
+   - swing taxonomy
+   - shared swing-bridge helpers
+3. Leave the retained signal-chain orchestration files where they are for that step.
+4. Run contract checks and dashboard checks immediately after the foundation move.
+
+This is safer than moving the signal chain first because:
+
+- foundation contracts are already explicit
+- swing detection / live state / taxonomy are the cleanest retained contract producers
+- signal-chain modules have more mixed boundaries and more downstream dependencies
+
+After foundation is stable in its target domain, the next move can migrate the retained signal chain one layer at a time.
