@@ -9,25 +9,25 @@ This is the single reusable research dashboard for SAFE v4.0. It is meant to ins
 Default view:
 
 ```bash
-python statistics/src/research/v4_iteration/dashboard/run_dashboard.py
+python statistics/src/dashboard/run_dashboard.py
 ```
 
 Specific registered view:
 
 ```bash
-python statistics/src/research/v4_iteration/dashboard/run_dashboard.py --view swing_extreme_timing
+python statistics/src/dashboard/run_dashboard.py --view swing_extreme_timing
 ```
 
 Custom dataset:
 
 ```bash
-python statistics/src/research/v4_iteration/dashboard/run_dashboard.py --dataset statistics/out/swing_bottom/reversal_zone_dataset.csv
+python statistics/src/dashboard/run_dashboard.py --dataset statistics/out/swing_bottom/reversal_zone_dataset.csv
 ```
 
 Validation without starting the server:
 
 ```bash
-python statistics/src/research/v4_iteration/dashboard/run_dashboard.py --check
+python statistics/src/dashboard/run_dashboard.py --check
 ```
 
 ## Supported Views
@@ -64,7 +64,7 @@ The dashboard provides:
 
 ## Adding New Datasets
 
-Add a new entry in [view_registry.py](/home/mihai/Documents/BTC_pulse/statistics/src/research/v4_iteration/dashboard/view_registry.py).
+Add a new entry in [view_registry.py](/home/mihai/Documents/BTC_pulse/statistics/src/dashboard/view_registry.py).
 
 Provide:
 

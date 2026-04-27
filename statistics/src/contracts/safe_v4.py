@@ -21,7 +21,7 @@ from src.path_config import (
     DEFAULT_TARGETS_CSV_PATH,
     OUT_DIR,
 )
-from src.research.v4_iteration.dashboard.view_registry import VIEW_REGISTRY
+from src.dashboard.view_registry import VIEW_REGISTRY
 
 
 @dataclass(frozen=True)

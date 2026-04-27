@@ -8,7 +8,7 @@
 
 ## Inputs And Split
 
-- source score file: `out/swing_bottom/buy_side_exploration_scores.csv`
+- source surface: direct rebuild from `out/swing_bottom/reversal_zone_dataset.csv` via retained signal-owned helpers
 - test down swings evaluated: `45`
 - test date range: `2024-12-22` to `2026-04-09`
 
@@ -60,11 +60,9 @@
 ## Decision
 
 - recommendation: **Continue**
-- Best hybrid: `hybrid_weighted_balanced`.
-- Best-pick avg distance `0.035` vs fixed baseline `0.047` (+0.012 improvement).
-- Best-pick 5% / 3% changes vs fixed baseline: `+0.089` / `+0.089`.
-- Top-decile 5% hit change vs fixed baseline: `+0.104`.
-- Top-decile avg distance change vs fixed baseline: `+0.009`.
+- Best hybrid by average best-picked distance: `hybrid_weighted_balanced`.
+- Fixed baseline avg best distance `0.047` vs candidate `0.035`; 5% hit `0.733` vs `0.822`, 3% hit `0.578` vs `0.667`.
+- Hybrid materially improves best-pick proximity without giving back top-decile quality.
 
 ## Interpretation
 
