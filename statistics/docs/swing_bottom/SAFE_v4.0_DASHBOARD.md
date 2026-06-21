@@ -4,30 +4,32 @@
 
 This is the single reusable research dashboard for SAFE v4.0. It is meant to inspect date-aligned research outputs against BTC price without building a separate visualization for each script.
 
+Run commands from `statistics/`.
+
 ## Run
 
 Default view:
 
 ```bash
-python statistics/src/dashboard/run_dashboard.py
+python src/dashboard/run_dashboard.py
 ```
 
 Specific registered view:
 
 ```bash
-python statistics/src/dashboard/run_dashboard.py --view swing_extreme_timing
+python src/dashboard/run_dashboard.py --view swing_extreme_timing
 ```
 
 Custom dataset:
 
 ```bash
-python statistics/src/dashboard/run_dashboard.py --dataset statistics/out/swing_bottom/reversal_zone_dataset.csv
+python src/dashboard/run_dashboard.py --dataset out/swing_bottom/reversal_zone_dataset.csv
 ```
 
 Validation without starting the server:
 
 ```bash
-python statistics/src/dashboard/run_dashboard.py --check
+python src/dashboard/run_dashboard.py --check
 ```
 
 ## Supported Views
@@ -84,3 +86,4 @@ If a dataset is not registered, the dashboard can still load it through `--datas
 - data is joined to `data/daily_price.json` on `date`
 - swings are loaded from `out/swing_detection/swings.csv` when available
 - all research outputs should remain date-aligned and CSV-based so they can plug into this dashboard without extra visualization code
+- the older `src/research/v4_iteration/dashboard/` entrypoints still exist temporarily as wrappers, but `src/dashboard/` is the normal workflow going forward

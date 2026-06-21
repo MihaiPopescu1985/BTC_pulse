@@ -2,51 +2,123 @@
 
 ## Prepare
 
+Work from the `statistics/` directory.
+
 ```bash
+cd statistics
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Repository layout
+## Current Repository Layout
 
-This repository is BTC-specific.
+The current retained workflow is organized around:
 
-- productive pipeline: `src/core/`
-- data access: `src/data/`
-- feature logic: `src/features/`
-- models: `src/models/`
-- utilities: `src/util/`
-- retained research core: `src/research/v4_iteration/core/`
+- `src/foundation/`
+  - retained swing-structure foundation
+- `src/signals/`
+  - retained signal chain
+- `src/dashboard/`
+  - retained inspection runtime
+- `src/pipelines/`
+  - orchestration entrypoints
+- `src/contracts/`
+  - validation guardrails
 
-Default inputs:
+Supporting lower-level domains remain in place:
 
-- `data/daily_price.json`
-- `data/daily_amounts.json`
-- `data/daily_tx_size.json`
+- `src/core/`
+- `src/data/`
+- `src/features/`
+- `src/models/`
+- `src/util/`
 
-Primary retained outputs:
+## Current Operational Workflow
+
+### Full retained rebuild
+
+```bash
+python src/pipelines/run_full_rebuild.py
+```
+
+This is the preferred end-to-end retained workflow. It runs:
+
+1. foundation rebuild
+2. retained signal-chain rebuild
+3. validation
+
+### Foundation rebuild only
+
+```bash
+python src/pipelines/run_foundation_pipeline.py
+```
+
+### Signal-chain rebuild only
+
+```bash
+python src/pipelines/run_signal_pipeline.py
+```
+
+### Validation only
+
+```bash
+python src/pipelines/run_validation.py
+```
+
+## Dashboard
+
+Run the retained dashboard:
+
+```bash
+python src/dashboard/run_dashboard.py
+```
+
+Validation-only dashboard check:
+
+```bash
+python src/dashboard/run_dashboard.py --check
+```
+
+Open a specific retained view:
+
+```bash
+python src/dashboard/run_dashboard.py --view swing_extreme_timing
+```
+
+Load a custom date-aligned dataset:
+
+```bash
+python src/dashboard/run_dashboard.py --dataset out/swing_bottom/reversal_zone_dataset.csv
+```
+
+## Retained Outputs
+
+Main retained outputs:
 
 - `out/features.csv`
 - `out/onchain_features.csv`
-- `out/targets.csv`
-- `out/states.csv`
 - `out/models/hmm_pack.joblib`
 - `out/models/hazard_pack.joblib`
 - `out/swing_detection/swings.csv`
-- `out/swing_detection/swing_sensitivity_summary.csv`
 - `out/swing_bridge/live_swing_state.csv`
 - `out/swing_bridge/swing_taxonomy.csv`
-- `out/swing_bridge/swing_condition_mapping.csv`
+- `out/swing_bottom/reversal_zone_dataset.csv`
+- `out/swing_bottom/swing_extreme_timing.csv`
+- `out/swing_bottom/buy_side_hybrid_scores.csv`
+- `out/swing_bottom/swing_decision_layer.csv`
+- `out/swing_bottom/swing_playbook_layer.csv`
+- `out/swing_bottom/strategy_translation_layer.csv`
+- `out/swing_bottom/rule_layer.csv`
+- `out/swing_bottom/signal_layer.csv`
 
-## Productive BTC pipeline
+## Lower-Level BTC Surface Refresh
 
-### Full rebuild
+The retained pipelines assume the BTC feature/model surface already exists.
+
+If raw BTC inputs changed and you need to refresh those upstream surfaces first, run the lower-level builders directly:
 
 ```bash
-source .venv/bin/activate
-
-python src/data/query.py
 python src/core/run_features.py
 python src/core/run_regime_hmm.py --retrain-hmm
 python src/core/run_hazard_train.py
@@ -56,89 +128,22 @@ python src/core/run_targets.py
 python src/core/run_states.py
 ```
 
-This rebuilds the retained productive feature, model, target, and state surface.
+Use this lower-level path only when you actually need to rebuild the upstream BTC surfaces. Day-to-day retained SAFE workflow should go through `src/pipelines/`.
 
-### Daily refresh
+## Research-Only Utilities
 
-```bash
-source .venv/bin/activate
-
-python src/data/query.py
-python src/core/run_onchain_features.py
-python src/core/run_exposure.py
-```
-
-Requirements:
-
-- `out/models/hmm_pack.joblib` must exist
-- `out/models/hazard_pack.joblib` must exist
-
-## Retained research foundation
-
-### Indicator audit
+These are still available, but they are not the primary workflow:
 
 ```bash
-source .venv/bin/activate
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/indicator_audit/run_indicator_reliability.py
+python src/research/v4_iteration/core/indicator_audit/run_indicator_reliability.py
+python src/research/v4_iteration/core/interaction_discovery/run_interaction_discovery.py
+python src/research/v4_iteration/core/swing_detection/run_swing_sensitivity.py
+python src/research/v4_iteration/core/swing_bridge/run_swing_condition_mapping.py
+python src/research/v4_iteration/productive/run_buy_side_exploration.py
 ```
 
-### Interaction discovery
+## Compatibility Note
 
-```bash
-source .venv/bin/activate
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/interaction_discovery/run_interaction_discovery.py
-```
+Older research-path and productive-path entrypoints still exist temporarily as wrappers.
 
-### Swing detection
-
-```bash
-source .venv/bin/activate
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_detection/run_swing_detection.py
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_detection/run_swing_sensitivity.py
-```
-
-### Swing bridge
-
-```bash
-source .venv/bin/activate
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_bridge/run_live_swing_state.py
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_bridge/run_swing_taxonomy.py
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_bridge/run_swing_condition_mapping.py
-```
-
-## Stage responsibilities
-
-- `src/core/run_features.py`
-  - builds BTC OHLCV features
-- `src/core/run_regime_hmm.py`
-  - fits or applies the HMM regime model
-- `src/core/run_hazard_train.py`
-  - trains calibrated hazard models
-- `src/core/run_exposure.py`
-  - applies HMM, hazard, and SAFE exposure logic
-- `src/core/run_onchain_features.py`
-  - builds retained on-chain features
-- `src/core/run_targets.py`
-  - builds forward research labels
-- `src/core/run_states.py`
-  - builds explicit market states
-- `src/research/v4_iteration/core/indicator_audit/`
-  - family-by-family indicator audit and reliability checks
-- `src/research/v4_iteration/core/interaction_discovery/`
-  - interaction templates and trend-state research
-- `src/research/v4_iteration/core/swing_detection/`
-  - volatility-normalized swing extraction and sensitivity checks
-- `src/research/v4_iteration/core/swing_bridge/`
-  - live swing state, swing taxonomy, and condition-to-swing mapping
-
-## Viewer
-
-The retained dashboard still supports the remaining swing work.
-
-```bash
-python -m http.server 8000
-```
-
-Then open:
-
-- `http://localhost:8000/statistics/viewer/dashboard.html`
+Use the new `src/pipelines/`, `src/foundation/`, `src/signals/`, and `src/dashboard/` entrypoints going forward. The wrapper paths are only there to avoid breaking existing references during cleanup.

@@ -1,76 +1,120 @@
 # SAFE v4.0 Reproducibility
 
-## Current retained scope
+## Scope
 
-This note covers only the retained repository scope after cleanup:
+This note describes the current retained SAFE workflow.
 
-- productive BTC feature and model pipeline
-- retained indicator-audit foundation
-- retained swing-detection foundation
-- retained swing-bridge foundation
+It covers:
 
-It does not cover deleted branch-hunting, walkforward-policy, or strategy-layer experiments.
+- retained foundation rebuild
+- retained signal-chain rebuild
+- retained validation
+- retained dashboard check
+
+It does not treat research-only scripts as part of the default reproducibility path.
+
+## Working Directory
+
+Run commands from `statistics/`.
 
 ## Inputs
 
-- `statistics/data/daily_price.json`
-- `statistics/data/daily_amounts.json`
-- `statistics/data/daily_tx_size.json`
+- `data/daily_price.json`
+- `data/daily_amounts.json`
+- `data/daily_tx_size.json`
 
-## Core date range
+## Core Date Range
 
 - `2017-08-17` -> `2026-04-02`
 
-## Productive rebuild
+## Preferred Retained Rebuild
+
+Run the full retained workflow:
 
 ```bash
-PYTHONPATH=statistics python statistics/src/core/run_features.py
-PYTHONPATH=statistics python statistics/src/core/run_regime_hmm.py --retrain-hmm
-PYTHONPATH=statistics python statistics/src/core/run_hazard_train.py
-PYTHONPATH=statistics python statistics/src/core/run_exposure.py
-PYTHONPATH=statistics python statistics/src/core/run_onchain_features.py
-PYTHONPATH=statistics python statistics/src/core/run_targets.py
-PYTHONPATH=statistics python statistics/src/core/run_states.py
+python src/pipelines/run_full_rebuild.py
 ```
 
-Outputs:
+This runs:
 
-- `statistics/out/features.csv`
-- `statistics/out/onchain_features.csv`
-- `statistics/out/targets.csv`
-- `statistics/out/states.csv`
-- `statistics/out/models/hmm_pack.joblib`
-- `statistics/out/models/hazard_pack.joblib`
+1. `src/pipelines/run_foundation_pipeline.py`
+2. `src/pipelines/run_signal_pipeline.py`
+3. `src/pipelines/run_validation.py`
 
-## Indicator audit foundation
+## Stepwise Retained Rebuild
+
+If you want the retained workflow in separate stages:
 
 ```bash
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/indicator_audit/run_indicator_reliability.py
+python src/pipelines/run_foundation_pipeline.py
+python src/pipelines/run_signal_pipeline.py
+python src/pipelines/run_validation.py
 ```
 
-Retained output:
-
-- `statistics/out/indicator_audit/indicator_reliability.csv`
-
-## Swing foundation
+## Dashboard Verification
 
 ```bash
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_detection/run_swing_detection.py
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_detection/run_swing_sensitivity.py
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_bridge/run_live_swing_state.py
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_bridge/run_swing_taxonomy.py
-PYTHONPATH=statistics python statistics/src/research/v4_iteration/core/swing_bridge/run_swing_condition_mapping.py
+python src/dashboard/run_dashboard.py --check
 ```
 
-Outputs:
+Optional local run:
 
-- `statistics/out/swing_detection/swings.csv`
-- `statistics/out/swing_detection/swing_sensitivity_summary.csv`
-- `statistics/out/swing_bridge/live_swing_state.csv`
-- `statistics/out/swing_bridge/swing_taxonomy.csv`
-- `statistics/out/swing_bridge/swing_condition_mapping.csv`
+```bash
+python src/dashboard/run_dashboard.py
+```
 
-## Notes
+## Retained Outputs
 
-- This is a retained-scope reproducibility note, not a frozen record of deleted experiments.
-- The repository is now centered on the productive BTC pipeline plus swing-structure research needed for the reset toward swing-phase and bottom modeling.
+The retained rebuild is expected to reproduce at least:
+
+### Feature / model surfaces
+
+- `out/features.csv`
+- `out/onchain_features.csv`
+- `out/models/hmm_pack.joblib`
+- `out/models/hazard_pack.joblib`
+
+### Foundation outputs
+
+- `out/swing_detection/swings.csv`
+- `out/swing_bridge/live_swing_state.csv`
+- `out/swing_bridge/swing_taxonomy.csv`
+
+### Retained signal outputs
+
+- `out/swing_bottom/reversal_zone_dataset.csv`
+- `out/swing_bottom/swing_extreme_timing.csv`
+- `out/swing_bottom/buy_side_hybrid_scores.csv`
+- `out/swing_bottom/swing_decision_layer.csv`
+- `out/swing_bottom/swing_playbook_layer.csv`
+- `out/swing_bottom/strategy_translation_layer.csv`
+- `out/swing_bottom/rule_layer.csv`
+- `out/swing_bottom/signal_layer.csv`
+
+## When Upstream BTC Surfaces Must Be Refreshed
+
+The retained pipelines assume the BTC feature/model surface already exists.
+
+If those upstream surfaces are missing or stale, rebuild them first with the lower-level BTC commands:
+
+```bash
+python src/core/run_features.py
+python src/core/run_regime_hmm.py --retrain-hmm
+python src/core/run_hazard_train.py
+python src/core/run_exposure.py
+python src/core/run_onchain_features.py
+python src/core/run_targets.py
+python src/core/run_states.py
+```
+
+Then run the retained workflow again:
+
+```bash
+python src/pipelines/run_full_rebuild.py
+```
+
+## Compatibility Note
+
+Old research-path and productive-path entrypoints still exist temporarily as wrappers.
+
+Use `src/pipelines/` and `src/dashboard/` as the default workflow. Wrapper paths should be treated as temporary compatibility only.

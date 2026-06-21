@@ -41,6 +41,9 @@ Status note:
 - strict signal contracts now pass for the full retained chain: reversal-zone dataset, swing-extreme timing, promoted buy-side hybrid, decision, playbook, strategy translation, rule, and signal layers
 - old productive wrappers for the retained chain still expose working entrypoints, so compatibility is preserved while restructuring continues
 - dashboard migration completed; `src/dashboard/` is now the source of truth for the retained inspection layer, with old research dashboard modules preserved as forwarding compatibility shims
+- pipeline orchestration added under `src/pipelines/`; retained foundation rebuild, retained signal-chain rebuild, validation, and full rebuild now have clean top-level runners without changing domain logic
+- compatibility wrappers were removed after operational docs and research-only imports were switched to the migrated domains
+- any remaining references to old wrapper paths in this document are historical migration references, not current repository entrypoints
 
 ## 2. Target Domains
 

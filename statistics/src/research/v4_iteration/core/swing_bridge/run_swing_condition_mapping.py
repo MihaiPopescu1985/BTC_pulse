@@ -18,7 +18,7 @@ from src.path_config import (
     OUT_DIR,
     STATISTICS_DIR,
 )
-from src.research.v4_iteration.core.swing_bridge.swing_bridge_common import (
+from src.foundation.swing_common import (
     SWING_ATR_WINDOW,
     SWING_GRANULARITY_LABEL,
     SWING_REVERSAL_K,
@@ -28,7 +28,7 @@ from src.research.v4_iteration.core.swing_bridge.swing_bridge_common import (
     map_dates_to_containing_swings,
     map_dates_to_next_swings,
 )
-from src.research.v4_iteration.core.swing_detection.run_swing_detection import detect_swings
+from src.foundation.swing_detection import detect_swings
 from src.data.loaders import load_daily_price_json
 from src.path_config import DEFAULT_PRICE_JSON_PATH
 
@@ -77,7 +77,7 @@ def ensure_supporting_outputs(price_json: str, live_swing_state_csv: Path, swing
     if live_swing_state_csv.exists():
         live_state = load_feature_csv(live_swing_state_csv)
     else:
-        from src.research.v4_iteration.core.swing_bridge.run_live_swing_state import build_live_swing_state
+        from src.foundation.live_swing_state import build_live_swing_state
 
         live_state = build_live_swing_state(load_daily_price_json(price_json))
 

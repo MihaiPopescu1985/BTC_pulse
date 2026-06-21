@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 from src.data.loaders import load_daily_price_json
 from src.path_config import DEFAULT_PRICE_JSON_PATH, OUT_DIR, STATISTICS_DIR
-from src.research.v4_iteration.core.swing_detection.run_swing_detection import detect_swings
+from src.foundation.swing_detection import detect_swings
 
 
 DEFAULT_SUMMARY_CSV_PATH = OUT_DIR / "swing_detection" / "swing_sensitivity_summary.csv"

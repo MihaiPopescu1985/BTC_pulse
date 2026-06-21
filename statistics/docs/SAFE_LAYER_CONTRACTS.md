@@ -66,7 +66,7 @@ Expectations:
 
 ### Dashboard-Facing Views
 
-Checks every registered view in `src/research/v4_iteration/dashboard/view_registry.py`.
+Checks every registered view in `src/dashboard/view_registry.py`.
 
 Expectations:
 
