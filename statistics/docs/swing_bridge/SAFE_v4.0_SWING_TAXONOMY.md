@@ -19,7 +19,7 @@ Taxonomy method:
 ## Counts
 
 - total swings: `550`
-- small / medium / large: `183` / `183` / `184`
+- small / medium / large: `184` / `183` / `183`
 - short / medium / long: `198` / `211` / `141`
 
 Interpretation:

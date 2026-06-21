@@ -22,26 +22,26 @@ This layer translates the promoted playbook into operational structural states: 
 
 | operational_state | row_count | row_share | avg_run_length_days | buy_zone_5_rate | sell_zone_5_rate | avg_clarity | avg_conflict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WAIT_CONFIRMATION | 1380.000 | 43.7% | 1.955 | 24.9% | 19.3% | 0.211 | 0.194 |
-| SELL_CONTEXT_ACTIVE | 602.000 | 19.1% | 1.905 | 2.5% | 51.8% | 0.412 | 0.161 |
+| WAIT_CONFIRMATION | 1376.000 | 43.6% | 1.957 | 24.9% | 19.3% | 0.211 | 0.194 |
+| SELL_CONTEXT_ACTIVE | 601.000 | 19.0% | 1.902 | 2.5% | 51.7% | 0.412 | 0.161 |
 | STAND_ASIDE_NO_EDGE | 438.000 | 13.9% | 2.355 | 2.5% | 10.3% | 0.098 | 0.099 |
-| CONTEXT_INVALIDATED | 353.000 | 11.2% | 1.000 | 12.2% | 17.0% | 0.105 | 0.177 |
-| LONG_CONTEXT_ACTIVE | 228.000 | 7.2% | 1.288 | 50.9% | 0.9% | 0.370 | 0.156 |
-| STAND_ASIDE_CONFLICT | 157.000 | 5.0% | 1.454 | 40.8% | 12.1% | 0.093 | 0.329 |
+| CONTEXT_INVALIDATED | 355.000 | 11.2% | 1.000 | 12.4% | 17.2% | 0.105 | 0.178 |
+| LONG_CONTEXT_ACTIVE | 228.000 | 7.2% | 1.288 | 50.4% | 0.9% | 0.370 | 0.156 |
+| STAND_ASIDE_CONFLICT | 160.000 | 5.1% | 1.468 | 40.6% | 11.9% | 0.093 | 0.329 |
 
 ## Playbook Mapping
 
 | operational_state | playbook_label | row_count | share_within_state |
 | --- | --- | --- | --- |
-| CONTEXT_INVALIDATED | HIGH_CONFLICT | 101 | 28.6% |
-| CONTEXT_INVALIDATED | NO_ACTION | 252 | 71.4% |
+| CONTEXT_INVALIDATED | HIGH_CONFLICT | 103 | 29.0% |
+| CONTEXT_INVALIDATED | NO_ACTION | 252 | 71.0% |
 | LONG_CONTEXT_ACTIVE | ACCUMULATION_WATCH | 228 | 100.0% |
-| SELL_CONTEXT_ACTIVE | DISTRIBUTION_WATCH | 602 | 100.0% |
-| STAND_ASIDE_CONFLICT | HIGH_CONFLICT | 157 | 100.0% |
+| SELL_CONTEXT_ACTIVE | DISTRIBUTION_WATCH | 601 | 100.0% |
+| STAND_ASIDE_CONFLICT | HIGH_CONFLICT | 160 | 100.0% |
 | STAND_ASIDE_NO_EDGE | NO_ACTION | 438 | 100.0% |
 | WAIT_CONFIRMATION | ACCUMULATION_WATCH | 88 | 6.4% |
-| WAIT_CONFIRMATION | DISTRIBUTION_WATCH | 35 | 2.5% |
-| WAIT_CONFIRMATION | TRANSITION_WATCH | 1257 | 91.1% |
+| WAIT_CONFIRMATION | DISTRIBUTION_WATCH | 34 | 2.5% |
+| WAIT_CONFIRMATION | TRANSITION_WATCH | 1254 | 91.1% |
 
 ## Transition Logic
 

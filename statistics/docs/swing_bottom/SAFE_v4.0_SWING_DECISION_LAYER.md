@@ -39,23 +39,23 @@
 
 ## State Prevalence And Quality
 
-- `BUY_SETUP`: share `0.184`, avg run `1.95` days, buy-zone 5% `0.528`, sell-zone 5% `0.040`, clarity `0.279`
-- `SELL_SETUP`: share `0.238`, avg run `2.33` days, buy-zone 5% `0.045`, sell-zone 5% `0.487`, clarity `0.387`
-- `CONFLICT_OVERLAP`: share `0.082`, avg run `1.50` days, buy-zone 5% `0.372`, sell-zone 5% `0.136`, clarity `0.096`
-- `TRANSITION_UNCLEAR`: share `0.278`, avg run `1.56` days, buy-zone 5% `0.154`, sell-zone 5% `0.218`, clarity `0.195`
+- `BUY_SETUP`: share `0.184`, avg run `1.95` days, buy-zone 5% `0.526`, sell-zone 5% `0.040`, clarity `0.279`
+- `SELL_SETUP`: share `0.237`, avg run `2.32` days, buy-zone 5% `0.044`, sell-zone 5% `0.487`, clarity `0.387`
+- `CONFLICT_OVERLAP`: share `0.083`, avg run `1.51` days, buy-zone 5% `0.373`, sell-zone 5% `0.137`, clarity `0.096`
+- `TRANSITION_UNCLEAR`: share `0.277`, avg run `1.55` days, buy-zone 5% `0.154`, sell-zone 5% `0.218`, clarity `0.195`
 - `NEUTRAL_NO_EDGE`: share `0.218`, avg run `2.04` days, buy-zone 5% `0.032`, sell-zone 5% `0.129`, clarity `0.101`
 
 ## Separation Readout
 
-- `BUY_SETUP` buy-zone 5% rate: `0.528` vs `NEUTRAL_NO_EDGE` `0.032`
+- `BUY_SETUP` buy-zone 5% rate: `0.526` vs `NEUTRAL_NO_EDGE` `0.032`
 - `SELL_SETUP` sell-zone 5% rate: `0.487` vs `NEUTRAL_NO_EDGE` `0.129`
 - separation should be read structurally: states are intended to clarify timing context, not prove a tradable rule
 
 ## Conflict Analysis
 
-- conflict rows: `258`
+- conflict rows: `263`
 - conflict live-swing direction mix: `up` `0.570`, `down` `0.430`
-- conflict avg buy score: `0.521`
+- conflict avg buy score: `0.522`
 - conflict avg sell score: `0.621`
 - conflict/overlap should be treated as a mixed timing state, not as a buy or sell trigger
 

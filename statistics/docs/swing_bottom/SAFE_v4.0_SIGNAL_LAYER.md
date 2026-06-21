@@ -22,11 +22,11 @@ This layer converts calibrated rule permissions into discrete structural signal 
 
 | signal_state | row_count | row_share | avg_run_length_days | buy_zone_5_rate | sell_zone_5_rate | avg_clarity | avg_conflict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NO_SIGNAL | 2226.000 | 70.5% | 5.048 | 20.0% | 16.8% | 0.171 | 0.182 |
-| SELL_SIGNAL_NEW | 307.000 | 9.7% | 1.000 | 2.0% | 52.1% | 0.401 | 0.158 |
-| SELL_SIGNAL_ACTIVE | 274.000 | 8.7% | 2.000 | 3.3% | 51.1% | 0.426 | 0.166 |
-| LONG_SIGNAL_NEW | 159.000 | 5.0% | 1.000 | 50.3% | 0.6% | 0.370 | 0.156 |
-| SIGNAL_INVALIDATED | 144.000 | 4.6% | 1.000 | 20.1% | 20.1% | 0.138 | 0.187 |
+| NO_SIGNAL | 2225.000 | 70.5% | 5.045 | 20.0% | 16.8% | 0.171 | 0.182 |
+| SELL_SIGNAL_NEW | 307.000 | 9.7% | 1.000 | 2.0% | 52.1% | 0.401 | 0.159 |
+| SELL_SIGNAL_ACTIVE | 273.000 | 8.6% | 2.007 | 3.3% | 50.9% | 0.425 | 0.166 |
+| LONG_SIGNAL_NEW | 159.000 | 5.0% | 1.000 | 49.7% | 0.6% | 0.370 | 0.156 |
+| SIGNAL_INVALIDATED | 146.000 | 4.6% | 1.000 | 21.2% | 20.5% | 0.139 | 0.189 |
 | LONG_SIGNAL_ACTIVE | 48.000 | 1.5% | 1.200 | 50.0% | 2.1% | 0.382 | 0.159 |
 
 ## Signal Context Runs
@@ -34,7 +34,7 @@ This layer converts calibrated rule permissions into discrete structural signal 
 | signal_side | avg_context_run_length_days | context_run_count |
 | --- | --- | --- |
 | long | 1.302 | 159.000 |
-| sell | 1.893 | 307.000 |
+| sell | 1.889 | 307.000 |
 
 ## Rule-State Mapping
 
@@ -42,13 +42,13 @@ This layer converts calibrated rule permissions into discrete structural signal 
 | --- | --- | --- | --- |
 | LONG_SIGNAL_ACTIVE | LONG_ELIGIBLE | 48 | 100.0% |
 | LONG_SIGNAL_NEW | LONG_ELIGIBLE | 159 | 100.0% |
-| NO_SIGNAL | AWAIT_CONFIRMATION | 1380 | 62.0% |
-| NO_SIGNAL | BLOCKED_BY_CONFLICT | 157 | 7.1% |
+| NO_SIGNAL | AWAIT_CONFIRMATION | 1376 | 61.8% |
+| NO_SIGNAL | BLOCKED_BY_CONFLICT | 160 | 7.2% |
 | NO_SIGNAL | BLOCKED_NO_EDGE | 438 | 19.7% |
 | NO_SIGNAL | INVALIDATED | 251 | 11.3% |
-| SELL_SIGNAL_ACTIVE | SELL_ELIGIBLE | 274 | 100.0% |
+| SELL_SIGNAL_ACTIVE | SELL_ELIGIBLE | 273 | 100.0% |
 | SELL_SIGNAL_NEW | SELL_ELIGIBLE | 307 | 100.0% |
-| SIGNAL_INVALIDATED | INVALIDATED | 144 | 100.0% |
+| SIGNAL_INVALIDATED | INVALIDATED | 146 | 100.0% |
 
 ## Event Logic
 

@@ -42,7 +42,7 @@
 
 ## Learned Combiner Coefficients
 
-- `buy_full`: `buy_phase_prob` `1.881`, `buy_analog_prob` `-0.047`, `buy_exhaustion_score` `0.003`
+- `buy_full`: `buy_phase_prob` `1.880`, `buy_analog_prob` `-0.046`, `buy_exhaustion_score` `0.002`
 - `sell_full`: `sell_phase_prob` `1.151`, `sell_analog_prob` `0.271`, `sell_exhaustion_score` `0.132`
 
 ## Evaluation Summary
@@ -50,7 +50,7 @@
 - buy unconditional 5% zone prevalence on test: `0.247`
 - buy learned-full top 10% zone 5% / 3% hit rate: `0.458` / `0.312`
 - buy fixed-weight top 10% zone 5% / 3% hit rate: `0.562` / `0.438`
-- buy phase-only top 10% zone 5% / 3% hit rate: `0.438` / `0.292`
+- buy phase-only top 10% zone 5% / 3% hit rate: `0.479` / `0.333`
 - sell unconditional 5% zone prevalence on test: `0.287`
 - sell learned-full top 10% zone 5% / 3% hit rate: `0.792` / `0.542`
 - sell fixed-weight top 10% zone 5% / 3% hit rate: `0.812` / `0.521`
@@ -69,8 +69,8 @@
 
 ## Coverage Thresholds
 
-- buy `learned_full` threshold `0.70`: coverage `0.800`, within 5% / 3% `0.596` / `0.422`, avg distance `0.062`, rows `109`
-- buy `learned_full` threshold `0.80`: coverage `0.733`, within 5% / 3% `0.569` / `0.431`, avg distance `0.065`, rows `72`
+- buy `learned_full` threshold `0.70`: coverage `0.800`, within 5% / 3% `0.589` / `0.421`, avg distance `0.062`, rows `107`
+- buy `learned_full` threshold `0.80`: coverage `0.733`, within 5% / 3% `0.565` / `0.435`, avg distance `0.065`, rows `69`
 - sell `learned_full` threshold `0.70`: coverage `1.000`, within 5% / 3% `0.604` / `0.359`, avg distance `0.051`, rows `217`
 - sell `learned_full` threshold `0.80`: coverage `0.932`, within 5% / 3% `0.617` / `0.383`, avg distance `0.049`, rows `193`
 
@@ -78,7 +78,7 @@
 
 - buy phase+analog best-row within 5% / 3%: `0.733` / `0.556`
 - buy phase+exhaustion best-row within 5% / 3%: `0.733` / `0.556`
-- sell phase+analog best-row within 5% / 3%: `0.841` / `0.659`
+- sell phase+analog best-row within 5% / 3%: `0.864` / `0.682`
 - sell phase+exhaustion best-row within 5% / 3%: `0.932` / `0.750`
 
 ## Interpretation

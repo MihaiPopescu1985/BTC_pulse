@@ -142,8 +142,3 @@ python src/research/v4_iteration/core/swing_bridge/run_swing_condition_mapping.p
 python src/research/v4_iteration/productive/run_buy_side_exploration.py
 ```
 
-## Compatibility Note
-
-Older research-path and productive-path entrypoints still exist temporarily as wrappers.
-
-Use the new `src/pipelines/`, `src/foundation/`, `src/signals/`, and `src/dashboard/` entrypoints going forward. The wrapper paths are only there to avoid breaking existing references during cleanup.

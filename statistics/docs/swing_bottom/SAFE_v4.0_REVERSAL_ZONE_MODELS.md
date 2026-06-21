@@ -31,33 +31,33 @@
 ## Buy Model Row Metrics
 
 - validation ROC AUC: `0.829`
-- validation PR AUC: `0.396`
-- validation Brier: `0.186`
-- validation Log loss: `0.545`
-- validation Precision / Recall / F1: `0.378` / `0.866` / `0.526`
+- validation PR AUC: `0.397`
+- validation Brier: `0.185`
+- validation Log loss: `0.543`
+- validation Precision / Recall / F1: `0.382` / `0.866` / `0.530`
 - test ROC AUC: `0.782`
-- test PR AUC: `0.469`
-- test Brier: `0.195`
-- test Log loss: `0.576`
-- test Precision / Recall / F1: `0.452` / `0.718` / `0.554`
+- test PR AUC: `0.470`
+- test Brier: `0.193`
+- test Log loss: `0.571`
+- test Precision / Recall / F1: `0.459` / `0.718` / `0.560`
 
 ## Sell Model Row Metrics
 
 - validation ROC AUC: `0.719`
 - validation PR AUC: `0.435`
-- validation Brier: `0.369`
-- validation Log loss: `1.076`
-- validation Precision / Recall / F1: `0.317` / `0.927` / `0.472`
+- validation Brier: `0.368`
+- validation Log loss: `1.075`
+- validation Precision / Recall / F1: `0.315` / `0.919` / `0.469`
 - test ROC AUC: `0.799`
 - test PR AUC: `0.557`
-- test Brier: `0.478`
-- test Log loss: `1.589`
+- test Brier: `0.477`
+- test Log loss: `1.583`
 - test Precision / Recall / F1: `0.320` / `1.000` / `0.485`
 
 ## Top-Bucket Quality
 
-- buy test top 10% primary / strict hit rate: `0.438` / `0.292`
-- buy test top 10% avg distance to low: `0.070`
+- buy test top 10% primary / strict hit rate: `0.479` / `0.333`
+- buy test top 10% avg distance to low: `0.068`
 - sell test top 10% primary / strict hit rate: `0.625` / `0.438`
 - sell test top 10% avg distance to high: `0.039`
 
@@ -74,25 +74,25 @@
 
 ### Buy
 
-- `numeric__run_magnitude_up`: `-2.2038`
-- `numeric__ONCHAIN_DOMINANCE`: `-1.4581`
-- `numeric__r1`: `-1.3160`
-- `numeric__atr`: `1.1484`
-- `numeric__ONCHAIN_TX_MID`: `1.1286`
-- `numeric__HMM_DOM`: `1.0887`
-- `numeric__atr_pct`: `-0.9575`
-- `numeric__E_target_safe`: `-0.9567`
+- `numeric__run_magnitude_up`: `-2.1824`
+- `numeric__ONCHAIN_DOMINANCE`: `-1.4605`
+- `numeric__r1`: `-1.3250`
+- `numeric__atr`: `1.1503`
+- `numeric__ONCHAIN_TX_MID`: `1.1317`
+- `numeric__HMM_DOM`: `1.0801`
+- `numeric__E_target_safe`: `-0.9544`
+- `numeric__atr_pct`: `-0.9513`
 
 ### Sell
 
-- `numeric__r1`: `1.2745`
-- `numeric__band_w`: `1.0090`
-- `numeric__P_REBOUND_10D_CAL`: `-0.8535`
-- `categorical__live_swing_direction_up`: `0.7446`
-- `numeric__return_accel`: `-0.7433`
-- `numeric__dist_from_mean_vol_units`: `-0.6662`
-- `numeric__ewma_vol`: `-0.6299`
-- `numeric__P_CORE_HMM`: `0.5551`
+- `numeric__r1`: `1.2762`
+- `numeric__band_w`: `1.0293`
+- `numeric__P_REBOUND_10D_CAL`: `-0.8767`
+- `numeric__return_accel`: `-0.7442`
+- `numeric__dist_from_mean_vol_units`: `-0.6745`
+- `numeric__ewma_vol`: `-0.6339`
+- `categorical__live_swing_direction_up`: `0.6158`
+- `categorical__live_swing_direction_unknown`: `-0.5571`
 
 ## Interpretation
 

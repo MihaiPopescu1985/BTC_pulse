@@ -47,14 +47,14 @@ def build_live_swing_state(price: pd.DataFrame) -> pd.DataFrame:
 
     live = pd.DataFrame(index=validated.index)
     columns = {
-        "live_swing_direction": np.nan,
+        "live_swing_direction": None,
         "days_since_last_pivot": np.nan,
         "distance_from_last_pivot_pct": np.nan,
         "distance_from_last_pivot_atr_units": np.nan,
         "current_swing_confirmed": False,
-        "last_confirmed_pivot_date": np.nan,
+        "last_confirmed_pivot_date": None,
         "last_confirmed_pivot_price": np.nan,
-        "current_leg_start_date": np.nan,
+        "current_leg_start_date": None,
         "current_leg_start_price": np.nan,
         "swing_confirmed_today": False,
         "current_swing_age_pct_of_median": np.nan,
