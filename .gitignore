@@ -17,7 +17,6 @@ crawler/build
 crawler/db
 crawler/etc
 crawler/.vscode
-crawler/src/*
 crawler/!src/*.c
 crawler/!src/*.h
 crawler/!script/build
