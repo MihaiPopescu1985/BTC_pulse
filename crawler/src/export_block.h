@@ -6,7 +6,8 @@
 
 typedef enum {
     EXPORT_MODE_SQL = 0,
-    EXPORT_MODE_DEBUG = 1
+    EXPORT_MODE_DEBUG = 1,
+    EXPORT_MODE_STATS = 2
 } export_mode_t;
 
 void export_set_mode(export_mode_t mode);

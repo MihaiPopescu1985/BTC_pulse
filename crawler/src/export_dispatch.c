@@ -36,10 +36,13 @@
 
 #define DECLARE_BLOCK(name, args, call) void block_export_##name args;
 #define DECLARE_DEBUG(name, args, call) void debug_export_##name args;
+#define DECLARE_STATS(name, args, call) void stats_export_##name args;
 EXPORT_CALLBACKS(DECLARE_BLOCK)
 EXPORT_CALLBACKS(DECLARE_DEBUG)
+EXPORT_CALLBACKS(DECLARE_STATS)
 #undef DECLARE_BLOCK
 #undef DECLARE_DEBUG
+#undef DECLARE_STATS
 
 typedef struct export_backend {
 #define BACKEND_FIELD(name, args, call) void (*name) args;
@@ -59,11 +62,22 @@ static const export_backend_t DEBUG_BACKEND = {
 #undef ASSIGN_DEBUG
 };
 
+static const export_backend_t STATS_BACKEND = {
+#define ASSIGN_STATS(name, args, call) .name = stats_export_##name,
+    EXPORT_CALLBACKS(ASSIGN_STATS)
+#undef ASSIGN_STATS
+};
+
 static const export_backend_t *ACTIVE_BACKEND = &BLOCK_BACKEND;
 
 void export_set_mode(export_mode_t mode)
 {
-    ACTIVE_BACKEND = (mode == EXPORT_MODE_DEBUG) ? &DEBUG_BACKEND : &BLOCK_BACKEND;
+    switch (mode) {
+        case EXPORT_MODE_DEBUG: ACTIVE_BACKEND = &DEBUG_BACKEND; break;
+        case EXPORT_MODE_STATS: ACTIVE_BACKEND = &STATS_BACKEND; break;
+        case EXPORT_MODE_SQL:
+        default:                ACTIVE_BACKEND = &BLOCK_BACKEND; break;
+    }
 }
 
 int export_set_mode_from_string(const char *mode)
@@ -75,6 +89,10 @@ int export_set_mode_from_string(const char *mode)
     }
     if (strcmp(mode, "debug") == 0) {
         export_set_mode(EXPORT_MODE_DEBUG);
+        return 0;
+    }
+    if (strcmp(mode, "stats") == 0) {
+        export_set_mode(EXPORT_MODE_STATS);
         return 0;
     }
     return 1;
