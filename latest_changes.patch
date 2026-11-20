@@ -1,0 +1,1045 @@
+diff --git a/crawler/Makefile b/crawler/Makefile
+index 0ed3e14..5a23fc1 100644
+--- a/crawler/Makefile
++++ b/crawler/Makefile
+@@ -1,18 +1,21 @@
+ CC ?= gcc
+ CFLAGS ?= -O3 -march=native -DNDEBUG -Wall
+-LDFLAGS ?= -flto
+ LDLIBS ?= -lcrypto -lpthread
+ 
+ BUILD_DIR := build
+ APP := $(BUILD_DIR)/crawl
+-TEST_PARSER := $(BUILD_DIR)/test_blk_dat_parser
+-TEST_COMMON := $(BUILD_DIR)/test_block_common
+-TEST_MAIN := $(BUILD_DIR)/test_main
+ 
+-APP_SOURCES := src/main.c src/blk_dat_parser.c src/export_dispatch.c src/export_block.c src/export_debug.c src/block_common.c
+-TEST_RECORDER := tests/export_block_recorder.c
++APP_SOURCES := \
++	src/main.c \
++	src/blk_dat_parser.c \
++	src/export_dispatch.c \
++	src/export_block.c \
++	src/export_debug.c \
++	src/export_stats.c \
++	src/block_common.c \
++	src/xor_reader.c
+ 
+-.PHONY: all unit-test integration-test test clean
++.PHONY: all clean
+ 
+ all: $(APP)
+ 
+@@ -20,26 +23,7 @@ $(BUILD_DIR):
+ 	mkdir -p $(BUILD_DIR)
+ 
+ $(APP): $(APP_SOURCES) | $(BUILD_DIR)
+-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(APP_SOURCES) $(LDLIBS)
+-
+-$(TEST_PARSER): tests/test_blk_dat_parser.c src/blk_dat_parser.c $(TEST_RECORDER) tests/export_block_recorder.h | $(BUILD_DIR)
+-	$(CC) $(CFLAGS) $(LDFLAGS) -Isrc -Itests -o $@ tests/test_blk_dat_parser.c src/blk_dat_parser.c $(TEST_RECORDER) $(LDLIBS)
+-
+-$(TEST_COMMON): tests/test_block_common.c src/block_common.c | $(BUILD_DIR)
+-	$(CC) $(CFLAGS) $(LDFLAGS) -Isrc -o $@ tests/test_block_common.c src/block_common.c
+-
+-$(TEST_MAIN): tests/test_main.c src/main.c src/blk_dat_parser.h | $(BUILD_DIR)
+-	$(CC) $(CFLAGS) $(LDFLAGS) -Isrc -o $@ tests/test_main.c
+-
+-unit-test: $(TEST_PARSER) $(TEST_COMMON) $(TEST_MAIN)
+-	./$(TEST_PARSER)
+-	./$(TEST_COMMON)
+-	./$(TEST_MAIN)
+-
+-integration-test: $(APP)
+-	bash tests/run_integration_test.sh
+-
+-test: unit-test integration-test
++	$(CC) $(CFLAGS) -o $@ $(APP_SOURCES) $(LDLIBS)
+ 
+ clean:
+-	rm -f $(APP) $(TEST_PARSER) $(TEST_COMMON) $(TEST_MAIN)
++	rm -f $(APP)
+diff --git a/crawler/script/build_daily_tx_size.py b/crawler/script/build_daily_tx_size.py
+new file mode 100644
+index 0000000..6c6acd7
+--- /dev/null
++++ b/crawler/script/build_daily_tx_size.py
+@@ -0,0 +1,162 @@
++#!/usr/bin/env python3
++"""
++Drive `crawl <file> stats` over every blk*.dat file and combine the per-file
++partial JSON outputs into a single daily_tx_size.json.
++
++Resumable: progress is checkpointed after every file, so if the run is
++interrupted (Ctrl+C, power loss, crash) it can be restarted and picks up where
++it left off instead of re-parsing everything.
++
++crawl auto-loads the XOR obfuscation key from blocks/xor.dat, so no extra flags
++are needed for Bitcoin Core v28+ obfuscated block files.
++
++Usage:
++    python3 build_daily_tx_size.py --crawl ./build/crawl \
++        --blocks /media/mihai/Expansion/bitcoin-data/blocks \
++        --out daily_tx_size.json
++
++To force a clean run (ignore any existing checkpoint):
++    python3 build_daily_tx_size.py ... --restart
++"""
++import argparse
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++BUCKET_LABELS = [
++    "0-0.001 BTC", "0.001-0.01 BTC", "0.01-0.1 BTC", "0.1-1 BTC",
++    "1-10 BTC", "10-100 BTC", "100-1000 BTC", "1000+ BTC",
++]
++NUM_BUCKETS = len(BUCKET_LABELS)
++
++
++def process_file(crawl_bin, dat_file):
++    """Run crawl in stats mode on one .dat file, return {day: [counts...]}."""
++    proc = subprocess.run([crawl_bin, str(dat_file), "stats"], capture_output=True)
++    if proc.returncode != 0:
++        sys.stderr.write(
++            f"\ncrawl failed on {dat_file} (exit {proc.returncode}):\n"
++            f"{proc.stderr.decode(errors='replace')}\n"
++        )
++        raise SystemExit(1)
++    try:
++        rows = json.loads(proc.stdout.decode())
++    except json.JSONDecodeError as e:
++        sys.stderr.write(f"\nBad JSON from crawl on {dat_file}: {e}\n")
++        raise SystemExit(1)
++    return {row[0]: row[1:] for row in rows[1:]}
++
++
++def checkpoint_path(out_path):
++    return str(out_path) + ".checkpoint.json"
++
++
++def load_checkpoint(cp_path):
++    """Return (daily_dict, set_of_done_filenames) or (None, None) if absent/unreadable."""
++    if not os.path.exists(cp_path):
++        return None, None
++    try:
++        with open(cp_path) as f:
++            state = json.load(f)
++        daily = {day: list(counts) for day, counts in state["daily"].items()}
++        done = set(state["done"])
++        return daily, done
++    except (json.JSONDecodeError, KeyError, OSError) as e:
++        sys.stderr.write(f"Warning: could not read checkpoint ({e}); starting fresh.\n")
++        return None, None
++
++
++def save_checkpoint_atomic(cp_path, daily, done):
++    """Write the checkpoint atomically: temp file + os.replace (crash-safe)."""
++    tmp = cp_path + ".tmp"
++    with open(tmp, "w") as f:
++        json.dump({"daily": daily, "done": sorted(done)}, f)
++        f.flush()
++        os.fsync(f.fileno())          # force to disk before the rename
++    os.replace(tmp, cp_path)          # atomic on the same filesystem
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--crawl", default="./build/crawl")
++    ap.add_argument("--blocks", required=True)
++    ap.add_argument("--out", default="daily_tx_size.json")
++    ap.add_argument("--pattern", default="blk*.dat")
++    ap.add_argument("--limit", type=int, default=0)
++    ap.add_argument("--restart", action="store_true",
++                    help="ignore any existing checkpoint and start over")
++    ap.add_argument("--checkpoint-every", type=int, default=1,
++                    help="save progress every N files (default: 1)")
++    args = ap.parse_args()
++
++    dat_files = sorted(Path(args.blocks).glob(args.pattern))
++    if args.limit > 0:
++        dat_files = dat_files[: args.limit]
++    if not dat_files:
++        sys.stderr.write(f"No files matching {args.pattern} in {args.blocks}\n")
++        raise SystemExit(1)
++
++    cp_path = checkpoint_path(args.out)
++
++    # Resume from checkpoint unless told to restart.
++    if args.restart and os.path.exists(cp_path):
++        os.remove(cp_path)
++        sys.stderr.write("Removed existing checkpoint (--restart).\n")
++
++    daily, done = load_checkpoint(cp_path)
++    if daily is None:
++        daily, done = {}, set()
++    else:
++        sys.stderr.write(
++            f"Resuming from checkpoint: {len(done)} files already processed.\n"
++        )
++
++    total = len(dat_files)
++    processed_this_run = 0
++
++    for i, dat_file in enumerate(dat_files, 1):
++        name = dat_file.name
++        if name in done:
++            continue  # already accounted for in a previous run
++
++        partial = process_file(args.crawl, dat_file)
++        for day, counts in partial.items():
++            acc = daily.setdefault(day, [0] * NUM_BUCKETS)
++            for b in range(NUM_BUCKETS):
++                acc[b] += counts[b]
++
++        done.add(name)
++        processed_this_run += 1
++
++        if processed_this_run % args.checkpoint_every == 0:
++            save_checkpoint_atomic(cp_path, daily, done)
++
++        if i % 50 == 0 or i == total:
++            sys.stderr.write(f"\rProcessed {len(done)}/{total} files...")
++            sys.stderr.flush()
++
++    sys.stderr.write("\n")
++
++    # Final save of the checkpoint (covers the tail if checkpoint_every > 1).
++    save_checkpoint_atomic(cp_path, daily, done)
++
++    # Write the final, sorted output.
++    header = ["date"] + BUCKET_LABELS
++    data = [header] + [[day] + daily[day] for day in sorted(daily)]
++    # Atomic write of the final file too.
++    tmp_out = str(args.out) + ".tmp"
++    Path(tmp_out).write_text(json.dumps(data, indent=4))
++    os.replace(tmp_out, args.out)
++
++    sys.stderr.write(f"Wrote {args.out} with {len(daily)} days.\n")
++
++    # Success: the checkpoint is no longer needed.
++    if os.path.exists(cp_path):
++        os.remove(cp_path)
++        sys.stderr.write("Run complete; checkpoint removed.\n")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/crawler/script/dump_mainchain.py b/crawler/script/dump_mainchain.py
+new file mode 100644
+index 0000000..6708bb9
+--- /dev/null
++++ b/crawler/script/dump_mainchain.py
+@@ -0,0 +1,152 @@
++#!/usr/bin/env python3
++"""
++Dump the main-chain block hashes (height 0 .. tip) to a text file, one hash per
++line, index = height. Talks directly to bitcoind's JSON-RPC over the .cookie
++auth, using a persistent HTTP connection and batched requests for speed.
++
++Usage:
++    python3 dump_mainchain.py \
++        --datadir /media/mihai/Expansion/bitcoin-data \
++        --out mainchain_hashes.txt
++
++    # or give an explicit rpc endpoint / auth:
++    python3 dump_mainchain.py --rpc http://127.0.0.1:8332 \
++        --cookie /media/mihai/Expansion/bitcoin-data/.cookie --out mainchain_hashes.txt
++
++Options:
++    --batch N     how many getblockhash calls per RPC round-trip (default 2000)
++    --start H     first height to fetch (default 0)
++    --end H       last height (default: getblockcount)
++"""
++import argparse
++import http.client
++import json
++import sys
++import time
++from pathlib import Path
++from urllib.parse import urlparse
++
++
++class RpcError(Exception):
++    pass
++
++
++class BitcoinRPC:
++    def __init__(self, url, user, password):
++        parsed = urlparse(url)
++        self.host = parsed.hostname or "127.0.0.1"
++        self.port = parsed.port or 8332
++        import base64
++        token = base64.b64encode(f"{user}:{password}".encode()).decode()
++        self.headers = {
++            "Content-Type": "application/json",
++            "Authorization": "Basic " + token,
++        }
++        self.conn = http.client.HTTPConnection(self.host, self.port, timeout=120)
++
++    def call_single(self, method, params=None):
++        payload = json.dumps({
++            "jsonrpc": "1.0", "id": "poc", "method": method,
++            "params": params or [],
++        })
++        self.conn.request("POST", "/", payload, self.headers)
++        resp = self.conn.getresponse()
++        body = resp.read()
++        if resp.status != 200:
++            raise RpcError(f"HTTP {resp.status}: {body[:200]!r}")
++        data = json.loads(body)
++        if data.get("error"):
++            raise RpcError(str(data["error"]))
++        return data["result"]
++
++    def call_batch(self, method, params_list):
++        """Send many calls in one HTTP request. Returns results in order."""
++        batch = [
++            {"jsonrpc": "1.0", "id": i, "method": method, "params": p}
++            for i, p in enumerate(params_list)
++        ]
++        payload = json.dumps(batch)
++        self.conn.request("POST", "/", payload, self.headers)
++        resp = self.conn.getresponse()
++        body = resp.read()
++        if resp.status != 200:
++            raise RpcError(f"HTTP {resp.status}: {body[:200]!r}")
++        data = json.loads(body)
++        # Responses can come back out of order; sort by id.
++        out = [None] * len(params_list)
++        for item in data:
++            if item.get("error"):
++                raise RpcError(str(item["error"]))
++            out[item["id"]] = item["result"]
++        return out
++
++    def close(self):
++        self.conn.close()
++
++
++def read_cookie(cookie_path):
++    text = Path(cookie_path).read_text().strip()
++    if ":" not in text:
++        raise RpcError(f"Malformed cookie file: {cookie_path}")
++    user, password = text.split(":", 1)
++    return user, password
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--datadir", help="bitcoin datadir (to find .cookie)")
++    ap.add_argument("--cookie", help="explicit path to .cookie")
++    ap.add_argument("--rpc", default="http://127.0.0.1:8332", help="RPC endpoint")
++    ap.add_argument("--out", default="mainchain_hashes.txt")
++    ap.add_argument("--batch", type=int, default=2000)
++    ap.add_argument("--start", type=int, default=0)
++    ap.add_argument("--end", type=int, default=-1)
++    args = ap.parse_args()
++
++    # Resolve cookie
++    cookie_path = args.cookie
++    if not cookie_path and args.datadir:
++        cookie_path = str(Path(args.datadir) / ".cookie")
++    if not cookie_path:
++        sys.stderr.write("Need --cookie or --datadir to authenticate.\n")
++        raise SystemExit(1)
++
++    user, password = read_cookie(cookie_path)
++    rpc = BitcoinRPC(args.rpc, user, password)
++
++    tip = args.end if args.end >= 0 else rpc.call_single("getblockcount")
++    start = args.start
++    sys.stderr.write(f"Fetching main-chain hashes for heights {start}..{tip} "
++                     f"(batch={args.batch})\n")
++
++    t0 = time.time()
++    hashes = [None] * (tip - start + 1)
++    h = start
++    while h <= tip:
++        hi = min(h + args.batch - 1, tip)
++        params_list = [[height] for height in range(h, hi + 1)]
++        results = rpc.call_batch("getblockhash", params_list)
++        for offset, res in enumerate(results):
++            hashes[h - start + offset] = res
++        h = hi + 1
++        elapsed = time.time() - t0
++        done = h - start
++        rate = done / elapsed if elapsed > 0 else 0
++        sys.stderr.write(f"\r{done}/{tip - start + 1} hashes  "
++                         f"({rate:.0f}/s, {elapsed:.1f}s elapsed)")
++        sys.stderr.flush()
++    sys.stderr.write("\n")
++
++    rpc.close()
++
++    # Write one hash per line; line number (0-based) == height.
++    with open(args.out, "w") as f:
++        f.write("\n".join(hashes))
++        f.write("\n")
++
++    total = time.time() - t0
++    sys.stderr.write(f"Wrote {len(hashes)} hashes to {args.out} in {total:.1f}s\n")
++
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/crawler/src/export_block.h b/crawler/src/export_block.h
+index e19ad38..30e07d7 100644
+--- a/crawler/src/export_block.h
++++ b/crawler/src/export_block.h
+@@ -6,7 +6,8 @@
+ 
+ typedef enum {
+     EXPORT_MODE_SQL = 0,
+-    EXPORT_MODE_DEBUG = 1
++    EXPORT_MODE_DEBUG = 1,
++    EXPORT_MODE_STATS = 2
+ } export_mode_t;
+ 
+ void export_set_mode(export_mode_t mode);
+diff --git a/crawler/src/export_dispatch.c b/crawler/src/export_dispatch.c
+index 6771671..651ba07 100644
+--- a/crawler/src/export_dispatch.c
++++ b/crawler/src/export_dispatch.c
+@@ -36,10 +36,13 @@
+ 
+ #define DECLARE_BLOCK(name, args, call) void block_export_##name args;
+ #define DECLARE_DEBUG(name, args, call) void debug_export_##name args;
++#define DECLARE_STATS(name, args, call) void stats_export_##name args;
+ EXPORT_CALLBACKS(DECLARE_BLOCK)
+ EXPORT_CALLBACKS(DECLARE_DEBUG)
++EXPORT_CALLBACKS(DECLARE_STATS)
+ #undef DECLARE_BLOCK
+ #undef DECLARE_DEBUG
++#undef DECLARE_STATS
+ 
+ typedef struct export_backend {
+ #define BACKEND_FIELD(name, args, call) void (*name) args;
+@@ -59,11 +62,22 @@ static const export_backend_t DEBUG_BACKEND = {
+ #undef ASSIGN_DEBUG
+ };
+ 
++static const export_backend_t STATS_BACKEND = {
++#define ASSIGN_STATS(name, args, call) .name = stats_export_##name,
++    EXPORT_CALLBACKS(ASSIGN_STATS)
++#undef ASSIGN_STATS
++};
++
+ static const export_backend_t *ACTIVE_BACKEND = &BLOCK_BACKEND;
+ 
+ void export_set_mode(export_mode_t mode)
+ {
+-    ACTIVE_BACKEND = (mode == EXPORT_MODE_DEBUG) ? &DEBUG_BACKEND : &BLOCK_BACKEND;
++    switch (mode) {
++        case EXPORT_MODE_DEBUG: ACTIVE_BACKEND = &DEBUG_BACKEND; break;
++        case EXPORT_MODE_STATS: ACTIVE_BACKEND = &STATS_BACKEND; break;
++        case EXPORT_MODE_SQL:
++        default:                ACTIVE_BACKEND = &BLOCK_BACKEND; break;
++    }
+ }
+ 
+ int export_set_mode_from_string(const char *mode)
+@@ -77,6 +91,10 @@ int export_set_mode_from_string(const char *mode)
+         export_set_mode(EXPORT_MODE_DEBUG);
+         return 0;
+     }
++    if (strcmp(mode, "stats") == 0) {
++        export_set_mode(EXPORT_MODE_STATS);
++        return 0;
++    }
+     return 1;
+ }
+ 
+diff --git a/crawler/src/export_stats.c b/crawler/src/export_stats.c
+new file mode 100644
+index 0000000..6a72a48
+--- /dev/null
++++ b/crawler/src/export_stats.c
+@@ -0,0 +1,275 @@
++// Stats export backend.
++//
++// Instead of emitting SQL, this backend accumulates, per UTC day, the number of
++// transactions falling into each predefined output-total size bucket, then emits
++// a partial JSON document on flush (end of the .dat file).
++//
++// The size of a transaction is defined exactly as in the old Python pipeline's
++// _build_tx_size_query: the sum of that transaction's output amounts, in satoshi.
++// The day is date(block_time, 'unixepoch') -> the UTC calendar day of the block
++// timestamp.
++//
++// Output format matches export_daily_tx_sizes exactly:
++//   [
++//       ["date", "0-0.001 BTC", "0.001-0.01 BTC", ... , "1000+ BTC"],
++//       ["2009-01-03", 1, 0, 0, 0, 0, 0, 0, 0],
++//       ...
++//   ]
++// Because one .dat file may contain days that also appear in a neighbouring file,
++// these partials are combined afterwards by a small Python script (sum per day).
++
++#include <stdint.h>
++#include <string.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <time.h>
++#include <unistd.h>
++
++#include "block_common.h"
++
++#define NUM_BUCKETS 8
++
++// Bucket lower bounds in satoshi (upper bound is the next bucket's lower bound;
++// the last bucket has no upper bound). Mirrors TX_SIZE_BUCKETS in query.py.
++static const uint64_t BUCKET_LOWER[NUM_BUCKETS] = {
++    0ULL,
++    100000ULL,
++    1000000ULL,
++    10000000ULL,
++    100000000ULL,
++    1000000000ULL,
++    10000000000ULL,
++    100000000000ULL
++};
++
++static const char *BUCKET_LABELS[NUM_BUCKETS] = {
++    "0-0.001 BTC",
++    "0.001-0.01 BTC",
++    "0.01-0.1 BTC",
++    "0.1-1 BTC",
++    "1-10 BTC",
++    "10-100 BTC",
++    "100-1000 BTC",
++    "1000+ BTC"
++};
++
++// --- Per-day accumulator -----------------------------------------------------
++
++typedef struct {
++    int32_t day;                     // days since the Unix epoch (UTC)
++    uint64_t counts[NUM_BUCKETS];    // tx counts per bucket for that day
++} day_entry;
++
++static day_entry *DAYS = NULL;
++static size_t DAYS_LEN = 0;
++static size_t DAYS_CAP = 0;
++
++// Current block timestamp (set by stats_export_block_time).
++static uint64_t CURRENT_BLOCK_TIME = 0;
++
++// Running total of the current transaction's output amounts, in satoshi.
++static uint64_t CURRENT_TX_TOTAL = 0;
++
++// Find or create the accumulator entry for a given UTC day index.
++// DAYS is kept sorted by day, so we can binary-search and insert in order.
++static day_entry *get_day_entry(int32_t day)
++{
++    // Binary search for `day`.
++    size_t lo = 0;
++    size_t hi = DAYS_LEN;
++    while (lo < hi) {
++        size_t mid = lo + (hi - lo) / 2;
++        if (DAYS[mid].day < day) {
++            lo = mid + 1;
++        } else {
++            hi = mid;
++        }
++    }
++
++    if (lo < DAYS_LEN && DAYS[lo].day == day) {
++        return &DAYS[lo];
++    }
++
++    // Need to insert a new entry at position `lo`.
++    if (DAYS_LEN == DAYS_CAP) {
++        size_t new_cap = (DAYS_CAP == 0) ? 64 : DAYS_CAP * 2;
++        day_entry *grown = (day_entry *) realloc(DAYS, new_cap * sizeof(day_entry));
++        if (grown == NULL) {
++            perror("Error resizing DAYS accumulator");
++            exit(1);
++        }
++        DAYS = grown;
++        DAYS_CAP = new_cap;
++    }
++
++    memmove(&DAYS[lo + 1], &DAYS[lo], (DAYS_LEN - lo) * sizeof(day_entry));
++    DAYS[lo].day = day;
++    memset(DAYS[lo].counts, 0, sizeof(DAYS[lo].counts));
++    DAYS_LEN++;
++
++    return &DAYS[lo];
++}
++
++static int bucket_for_amount(uint64_t total)
++{
++    // Highest bucket whose lower bound is <= total. Buckets are contiguous and
++    // ascending, so walk from the top.
++    for (int i = NUM_BUCKETS - 1; i >= 0; i--) {
++        if (total >= BUCKET_LOWER[i]) {
++            return i;
++        }
++    }
++    return 0; // total == 0 lands in bucket 0 ([0, 100000))
++}
++
++// --- Callbacks ---------------------------------------------------------------
++
++// Header
++void stats_export_magic_number(uint8_t magic_bytes[4]) { (void) magic_bytes; }
++void stats_export_block_size(uint8_t block_size[4]) { (void) block_size; }
++void stats_export_header_version(uint8_t header_version[4]) { (void) header_version; }
++void stats_export_prev_hash(uint8_t prev_hash[32]) { (void) prev_hash; }
++void stats_export_merkle_root(uint8_t merkle_root[32]) { (void) merkle_root; }
++
++void stats_export_block_time(uint8_t block_time[4])
++{
++    uint64_t time = block_time[3];
++    time = time << 8 | block_time[2];
++    time = time << 8 | block_time[1];
++    time = time << 8 | block_time[0];
++
++    CURRENT_BLOCK_TIME = time;
++}
++
++void stats_export_nbytes(uint8_t nbyes[4]) { (void) nbyes; }
++void stats_export_nonce(uint8_t nonce[4]) { (void) nonce; }
++void stats_export_block_hash(unsigned char block_hash[32]) { (void) block_hash; }
++
++// Transaction count
++void stats_export_transaction_count(uint64_t tx_count) { (void) tx_count; }
++
++// Transaction
++void stats_export_tx_version(uint8_t tx_version[4]) { (void) tx_version; }
++
++// Transaction input
++void stats_export_flag(uint8_t flag) { (void) flag; }
++void stats_export_tx_in_count(uint64_t tx_in_count) { (void) tx_in_count; }
++void stats_export_tx_id(uint8_t tx_id[32]) { (void) tx_id; }
++void stats_export_input_vout(uint8_t vout[4]) { (void) vout; }
++void stats_export_script_sig_size(uint64_t script_sig_size) { (void) script_sig_size; }
++void stats_export_script_sig(uint8_t *script_sig) { (void) script_sig; }
++void stats_export_tx_in_sequence(uint8_t tx_in_sequence[4]) { (void) tx_in_sequence; }
++
++// Transaction output
++void stats_export_tx_out_count(uint64_t tx_out_count)
++{
++    (void) tx_out_count;
++    // A new transaction's outputs are about to be parsed: reset the running total.
++    CURRENT_TX_TOTAL = 0;
++}
++
++void stats_export_amount(uint8_t amount[8])
++{
++    uint64_t amt = amount[7];
++    amt = amt << 8 | amount[6];
++    amt = amt << 8 | amount[5];
++    amt = amt << 8 | amount[4];
++    amt = amt << 8 | amount[3];
++    amt = amt << 8 | amount[2];
++    amt = amt << 8 | amount[1];
++    amt = amt << 8 | amount[0];
++
++    CURRENT_TX_TOTAL += amt;
++}
++
++void stats_export_pub_key_size(uint64_t pub_key_size) { (void) pub_key_size; }
++void stats_export_script_pub_key(uint8_t *script_pub_key) { (void) script_pub_key; }
++
++// Transaction witness
++void stats_export_stack_items_count(uint64_t stack_items) { (void) stack_items; }
++void stats_export_stack_item_size(uint64_t size) { (void) size; }
++void stats_export_to_stack(uint8_t *to_stack) { (void) to_stack; }
++void stats_export_witness(uint8_t *witness, uint64_t witness_size) { (void) witness; (void) witness_size; }
++void stats_export_lock_time(uint8_t lock_time[4]) { (void) lock_time; }
++
++void stats_export_tx_hash(uint8_t tx_hash[32])
++{
++    (void) tx_hash;
++    // End of a transaction: CURRENT_TX_TOTAL now holds the sum of its outputs.
++    // Attribute it to the block's UTC day and the appropriate size bucket.
++    int32_t day = (int32_t) (CURRENT_BLOCK_TIME / 86400ULL);
++    day_entry *entry = get_day_entry(day);
++    int bucket = bucket_for_amount(CURRENT_TX_TOTAL);
++    entry->counts[bucket]++;
++}
++
++// Convert a day index (days since epoch) to "YYYY-MM-DD" (UTC), matching
++// SQLite's date(..., 'unixepoch').
++static void format_day(int32_t day, char *out /* at least 11 bytes */)
++{
++    time_t t = (time_t) day * 86400;
++    struct tm tm_utc;
++    gmtime_r(&t, &tm_utc);
++    // strftime is safe here; small fixed output.
++    strftime(out, 11, "%Y-%m-%d", &tm_utc);
++}
++
++void stats_export_flush(void)
++{
++    // Emit the partial JSON document to stdout.
++    // Header row.
++    _reset();
++
++    // Rough upper bound per line; _resize_block grows as needed anyway.
++    _resize_block(256);
++    _append_char("[\n    [\"date\"", 13);
++    for (int b = 0; b < NUM_BUCKETS; b++) {
++        _append_char(", \"", 3);
++        size_t len = strlen(BUCKET_LABELS[b]);
++        _resize_block(len + 8);
++        _append_char((char *) BUCKET_LABELS[b], len);
++        _append_char("\"", 1);
++    }
++    _append_char("]", 1);
++
++    char daybuf[11];
++    for (size_t i = 0; i < DAYS_LEN; i++) {
++        format_day(DAYS[i].day, daybuf);
++
++        // ",\n    [\"YYYY-MM-DD\"" + 8 * (", " + up to 20 digits) + "]"
++        _resize_block(32 + NUM_BUCKETS * 24);
++        _append_char(",\n    [\"", 8);
++        _append_char(daybuf, 10);
++        _append_char("\"", 1);
++
++        for (int b = 0; b < NUM_BUCKETS; b++) {
++            _append_char(", ", 2);
++            // Write the count as a decimal without fixed-width padding.
++            char numbuf[21];
++            int n = snprintf(numbuf, sizeof(numbuf), "%llu",
++                             (unsigned long long) DAYS[i].counts[b]);
++            _append_char(numbuf, (uint64_t) n);
++        }
++        _append_char("]", 1);
++    }
++
++    _resize_block(4);
++    _append_char("\n]\n", 3);
++
++    // Write everything out.
++    size_t offset = 0;
++    while (offset < PARSED_BLOCK_INDEX) {
++        ssize_t written = write(STDOUT_FILENO, PARSED_BLOCK + offset,
++                                (size_t) PARSED_BLOCK_INDEX - offset);
++        if (written <= 0) break;
++        offset += (size_t) written;
++    }
++
++    _reset();
++
++    // Free the accumulator so a subsequent run in the same process starts clean.
++    free(DAYS);
++    DAYS = NULL;
++    DAYS_LEN = 0;
++    DAYS_CAP = 0;
++}
+diff --git a/crawler/src/main.c b/crawler/src/main.c
+index 518bfdc..ac09519 100644
+--- a/crawler/src/main.c
++++ b/crawler/src/main.c
+@@ -1,33 +1,101 @@
+ #include <stdlib.h>
+ #include <stdio.h>
++#include <stdint.h>
++#include <string.h>
+ 
+ #include "blk_dat_parser.h"
+ #include "export_block.h"
++#include "xor_reader.h"
++
++// Parse a hex string like "92790676bfcf3f03" into bytes. Returns the number of
++// bytes written, or -1 on a malformed string.
++static int parse_hex_key(const char *hex, uint8_t *out, size_t out_cap)
++{
++    size_t len = strlen(hex);
++    if (len % 2 != 0) return -1;
++    size_t nbytes = len / 2;
++    if (nbytes > out_cap) return -1;
++
++    for (size_t i = 0; i < nbytes; i++) {
++        char c1 = hex[2 * i];
++        char c2 = hex[2 * i + 1];
++        int hi, lo;
++        if      (c1 >= '0' && c1 <= '9') hi = c1 - '0';
++        else if (c1 >= 'a' && c1 <= 'f') hi = c1 - 'a' + 10;
++        else if (c1 >= 'A' && c1 <= 'F') hi = c1 - 'A' + 10;
++        else return -1;
++        if      (c2 >= '0' && c2 <= '9') lo = c2 - '0';
++        else if (c2 >= 'a' && c2 <= 'f') lo = c2 - 'a' + 10;
++        else if (c2 >= 'A' && c2 <= 'F') lo = c2 - 'A' + 10;
++        else return -1;
++        out[i] = (uint8_t) ((hi << 4) | lo);
++    }
++    return (int) nbytes;
++}
+ 
+ int main(int argc, char **argv) {
+     if (argc < 2) {
+-        fprintf(stderr, "Usage: %s <path-to-dat-file> [sql|debug]\n", argv[0]);
++        fprintf(stderr,
++            "Usage: %s <path-to-dat-file> [sql|debug|stats] [--xor <hexkey>|--no-xor]\n",
++            argv[0]);
+         return 1;
+     }
+ 
+     const char *export_mode = getenv("CRAWL_EXPORT_MODE");
+-    if (argc >= 3) export_mode = argv[2];
++    if (argc >= 3 && argv[2][0] != '-') export_mode = argv[2];
+     if (export_set_mode_from_string(export_mode) != 0) {
+-        fprintf(stderr, "Unsupported export mode '%s'. Use sql or debug.\n", export_mode);
++        fprintf(stderr, "Unsupported export mode '%s'. Use sql, debug or stats.\n", export_mode);
+         return 1;
+     }
+ 
+-    // Read the file
+-    FILE *dat_file = fopen(argv[1], "rb");
++    // Determine the obfuscation key.
++    //   default : auto-load from blocks/xor.dat next to the .dat file
++    //   --xor H : use the explicit hex key H
++    //   --no-xor: force no de-obfuscation (read the file as-is)
++    uint8_t key[64];
++    size_t key_len = 0;
++    int force_no_xor = 0;
++    const char *explicit_hex = NULL;
++
++    for (int i = 2; i < argc; i++) {
++        if (strcmp(argv[i], "--no-xor") == 0) {
++            force_no_xor = 1;
++        } else if (strcmp(argv[i], "--xor") == 0 && i + 1 < argc) {
++            explicit_hex = argv[i + 1];
++            i++;
++        }
++    }
++
++    if (force_no_xor) {
++        key_len = 0;
++    } else if (explicit_hex != NULL) {
++        int n = parse_hex_key(explicit_hex, key, sizeof(key));
++        if (n < 0) {
++            fprintf(stderr, "Invalid --xor hex key '%s'.\n", explicit_hex);
++            return 1;
++        }
++        key_len = (size_t) n;
++    } else {
++        // Auto-load from blocks/xor.dat. Absent file => no obfuscation.
++        key_len = sizeof(key);
++        int rc = xor_load_key_for(argv[1], key, &key_len);
++        if (rc < 0) {
++            fprintf(stderr, "Failed to read xor.dat key.\n");
++            return 1;
++        }
++        // rc == 1 (no xor.dat) leaves key_len = 0 => passthrough.
++    }
++
++    // Open the file through the transparent de-obfuscating wrapper.
++    FILE *dat_file = xor_fopen(argv[1], key_len > 0 ? key : NULL, key_len);
+     if (dat_file == NULL) {
+         fprintf(stderr, "Dat file could not be opened\n");
+         return 1;
+     }
+-    setvbuf(dat_file, NULL, _IOFBF, 8 * 1024 * 1024);
+ 
+     int result = parse_dat_file(dat_file);
+     fclose(dat_file);
+ 
+-    if(result != 0) fprintf(stderr, "Parsing failed. Error code %d\n", result);
++    if (result != 0) fprintf(stderr, "Parsing failed. Error code %d\n", result);
+     return result;
+ }
+diff --git a/crawler/src/xor_reader.c b/crawler/src/xor_reader.c
+new file mode 100644
+index 0000000..bd4d93b
+--- /dev/null
++++ b/crawler/src/xor_reader.c
+@@ -0,0 +1,149 @@
++// Transparent XOR-deobfuscating FILE* wrapper for Bitcoin Core blk*.dat files.
++//
++// Bitcoin Core v28+ stores an 8-byte XOR key in blocks/xor.dat and obfuscates
++// every byte written to the blk*.dat files with it. We wrap the underlying file
++// in a custom stream (via glibc fopencookie) that reverses the XOR on read,
++// keyed by the absolute byte offset, so the parser sees plaintext and never
++// needs to know obfuscation happened.
++
++#define _GNU_SOURCE
++#include <stdio.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++
++#include "xor_reader.h"
++
++typedef struct {
++    FILE *inner;          // the real, obfuscated file
++    uint8_t key[64];      // obfuscation key
++    size_t key_len;       // number of key bytes (0 => passthrough)
++    int passthrough;      // 1 if no transformation should be applied
++} xor_cookie;
++
++static ssize_t xor_read(void *c, char *buf, size_t size)
++{
++    xor_cookie *ck = (xor_cookie *) c;
++
++    // Absolute offset BEFORE this read, so we can key the XOR correctly.
++    long pos = ftell(ck->inner);
++    if (pos < 0) return -1;
++
++    size_t n = fread(buf, 1, size, ck->inner);
++    if (n == 0) {
++        if (ferror(ck->inner)) return -1;
++        return 0; // EOF
++    }
++
++    if (!ck->passthrough && ck->key_len > 0) {
++        uint64_t offset = (uint64_t) pos;
++        for (size_t i = 0; i < n; i++) {
++            buf[i] ^= ck->key[(offset + i) % ck->key_len];
++        }
++    }
++
++    return (ssize_t) n;
++}
++
++static int xor_seek(void *c, off64_t *offset, int whence)
++{
++    xor_cookie *ck = (xor_cookie *) c;
++    if (fseek(ck->inner, (long) *offset, whence) != 0) {
++        return -1;
++    }
++    long pos = ftell(ck->inner);
++    if (pos < 0) return -1;
++    *offset = (off64_t) pos;   // report the resulting absolute position
++    return 0;
++}
++
++static int xor_close(void *c)
++{
++    xor_cookie *ck = (xor_cookie *) c;
++    int rc = 0;
++    if (ck->inner) rc = fclose(ck->inner);
++    free(ck);
++    return rc;
++}
++
++FILE *xor_fopen(const char *path, const uint8_t *key, size_t key_len)
++{
++    xor_cookie *ck = (xor_cookie *) calloc(1, sizeof(xor_cookie));
++    if (ck == NULL) return NULL;
++
++    ck->inner = fopen(path, "rb");
++    if (ck->inner == NULL) {
++        free(ck);
++        return NULL;
++    }
++
++    // A bigger buffer on the inner file keeps physical reads large/sequential.
++    setvbuf(ck->inner, NULL, _IOFBF, 8 * 1024 * 1024);
++
++    ck->key_len = 0;
++    ck->passthrough = 1;
++    if (key != NULL && key_len > 0 && key_len <= sizeof(ck->key)) {
++        // If every key byte is zero, obfuscation is effectively off.
++        int all_zero = 1;
++        for (size_t i = 0; i < key_len; i++) {
++            if (key[i] != 0) { all_zero = 0; break; }
++        }
++        if (!all_zero) {
++            memcpy(ck->key, key, key_len);
++            ck->key_len = key_len;
++            ck->passthrough = 0;
++        }
++    }
++
++    cookie_io_functions_t io = {
++        .read = xor_read,
++        .write = NULL,
++        .seek = xor_seek,
++        .close = xor_close,
++    };
++
++    FILE *f = fopencookie(ck, "rb", io);
++    if (f == NULL) {
++        fclose(ck->inner);
++        free(ck);
++        return NULL;
++    }
++    return f;
++}
++
++// Build the path to blocks/xor.dat given a path to a blk*.dat file, i.e. replace
++// the final path component with "xor.dat".
++static void sibling_xor_path(const char *dat_path, char *out, size_t out_sz)
++{
++    const char *slash = strrchr(dat_path, '/');
++    if (slash == NULL) {
++        snprintf(out, out_sz, "xor.dat");
++    } else {
++        size_t dir_len = (size_t) (slash - dat_path) + 1; // include the slash
++        if (dir_len >= out_sz) dir_len = out_sz - 1;
++        memcpy(out, dat_path, dir_len);
++        out[dir_len] = '\0';
++        strncat(out, "xor.dat", out_sz - strlen(out) - 1);
++    }
++}
++
++int xor_load_key_for(const char *dat_path, uint8_t *key_out, size_t *key_len)
++{
++    char xor_path[4096];
++    sibling_xor_path(dat_path, xor_path, sizeof(xor_path));
++
++    FILE *f = fopen(xor_path, "rb");
++    if (f == NULL) {
++        // No xor.dat -> not an error; caller treats as "no obfuscation".
++        *key_len = 0;
++        return 1;
++    }
++
++    size_t cap = *key_len;
++    size_t n = fread(key_out, 1, cap, f);
++    fclose(f);
++
++    *key_len = n;
++    return (n > 0) ? 0 : -1;
++}
+diff --git a/crawler/src/xor_reader.h b/crawler/src/xor_reader.h
+new file mode 100644
+index 0000000..e2c89f8
+--- /dev/null
++++ b/crawler/src/xor_reader.h
+@@ -0,0 +1,27 @@
++#ifndef XOR_READER_H
++#define XOR_READER_H
++
++#include <stdio.h>
++#include <stdint.h>
++
++// Bitcoin Core (v28+) XOR-obfuscates the blk*.dat files in the blocks
++// directory with an 8-byte key stored in blocks/xor.dat. This wrapper returns
++// a FILE* that transparently de-obfuscates every byte as it is read, so the
++// existing parser can consume it unchanged.
++//
++// The de-obfuscation is: plaintext_byte = file_byte XOR key[absolute_offset % 8]
++//
++// key/key_len: the obfuscation key bytes (typically 8). If key_len == 0 or all
++// key bytes are zero, no transformation is applied (the file is read as-is).
++//
++// Returns a readable FILE* on success (fclose it normally), or NULL on error.
++FILE *xor_fopen(const char *path, const uint8_t *key, size_t key_len);
++
++// Load the obfuscation key from a blocks/xor.dat file next to the given .dat
++// file path. Writes up to *key_len bytes into key_out and updates *key_len to
++// the number of bytes actually read. Returns 0 on success (key found and read),
++// 1 if no xor.dat exists (caller should treat as "no obfuscation"), negative on
++// a real error.
++int xor_load_key_for(const char *dat_path, uint8_t *key_out, size_t *key_len);
++
++#endif
+diff --git a/crawler/version b/crawler/version
+index 3eefcb9..9084fa2 100644
+--- a/crawler/version
++++ b/crawler/version
+@@ -1 +1 @@
+-1.0.0
++1.1.0

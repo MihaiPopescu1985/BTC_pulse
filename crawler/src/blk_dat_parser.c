@@ -586,6 +586,54 @@ int parse_transactions(FILE *dat_file)
     return 0;
 }
 
+// Returns true if the next 4 bytes are the block magic number. Does not
+// consume anything: the file position is restored before returning.
+static bool next_is_magic(FILE *dat_file)
+{
+    uint8_t peek[4];
+    long pos = ftell(dat_file);
+    size_t n = fread(peek, 1, 4, dat_file);
+    fseek(dat_file, pos, SEEK_SET);
+
+    return n == 4 && memcmp(peek, BLOCK_MAGIC_NUMBER, 4) == 0;
+}
+
+// Returns true if everything from the current position to EOF repeats with a
+// period of 8 bytes. Bitcoin Core preallocates blk*.dat files with zeros, so
+// the unused tail of the newest file is zero padding. Plain zeros have period 8,
+// and zeros XOR-ed with Core's 8-byte obfuscation key (applied by xor_reader)
+// still have period 8. Real block data or a truncated block does not. The file
+// position is restored before returning.
+static bool rest_is_padding(FILE *dat_file)
+{
+    long pos = ftell(dat_file);
+    uint8_t first[8];
+    size_t head = fread(first, 1, 8, dat_file);
+    // Fewer than 8 bytes left is not padding: Core's preallocated tail is far
+    // larger than one period, and a short leftover tail says the file is
+    // truncated. Treating it as padding would hide that error.
+    bool padding = head == sizeof(first);
+
+    if (padding)
+    {
+        uint8_t buffer[64 * 1024];
+        uint64_t offset = head;   // bytes checked so far, relative to pos
+        size_t n;
+        while (padding && (n = fread(buffer, 1, sizeof(buffer), dat_file)) > 0)
+        {
+            for (size_t i = 0; i < n; i++)
+            {
+                if (buffer[i] != first[(offset + i) % 8]) { padding = false; break; }
+            }
+            offset += n;
+        }
+    }
+
+    clearerr(dat_file);
+    fseek(dat_file, pos, SEEK_SET);
+    return padding;
+}
+
 int parse_dat_file(FILE *dat_file)
 {
     int error_code = 0;
@@ -594,6 +642,12 @@ int parse_dat_file(FILE *dat_file)
         int next_byte = fgetc(dat_file);
         if (next_byte != EOF) ungetc(next_byte, dat_file);
         else break;
+
+        // The newest blk*.dat file is only partly filled: after the last real
+        // block comes zero padding. Stop cleanly there. Anything else that is
+        // not a magic number (corrupt or truncated data) still falls through to
+        // parse_header(), which reports the error exactly as before.
+        if (!next_is_magic(dat_file) && rest_is_padding(dat_file)) break;
 
         error_code = parse_header(dat_file);
         if (error_code != 0) break;

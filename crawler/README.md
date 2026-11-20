@@ -118,6 +118,12 @@ How to extend benchmarks:
 Testing requires the presence of the file `tests/blk01985.dat`.  
 This is the `.dat` file from the blockchain, not included in the repo because of its size.  
 
+Bitcoin Core v28+ XOR-obfuscates the block files, so copy the node's
+`blocks/xor.dat` to `tests/xor.dat` as well; the crawler loads the key from next
+to the `.dat` file. Without it, parsing stops on the first magic number
+(`Expected F9 byte but found ...`). A key can also be given explicitly with
+`--xor <hexkey>`, and `--no-xor` forces the file to be read as-is.  
+
 Run unit tests:
 
 ```bash
@@ -138,7 +144,9 @@ make integration-test
 
 Integration test checks:
 
-- SQL output hash for `tests/blk01985.dat`
+- SQL output hash for `tests/blk01985.dat` (the expected hash in
+  `tests/run_integration_test.sh` belongs to one specific fixture; re-baseline it
+  with `./build/crawl tests/blk01985.dat | sha256sum` when the fixture changes)
 - non-zero exit on a truncated fixture
 
 Run full test suite:
