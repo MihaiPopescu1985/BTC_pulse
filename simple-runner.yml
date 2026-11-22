@@ -32,21 +32,6 @@ buttons:
     cwd: crawler
     script: make clean
 
-  - id: echarts-ui-setup
-    label: EChartsUI - run setup
-    cwd: echarts-ui
-    script: npm install && npm run dev
-
-  - id: echarts-ui-run
-    label: EChartsUI - run preview
-    cwd: echarts-ui
-    script: npm run build && npm run preview
-
-  - id: echarts-ui-test
-    label: EChartsUI - run tests
-    cwd: echarts-ui
-    script: npm test
-
   - id: frontend-setup
     label: Frontend - run setup
     cwd: frontend
@@ -79,7 +64,7 @@ buttons:
     script: |
       #!/bin/bash
       # Remove the old generated file to start clean
-      rm out/daily_reading.txt
+      rm -f out/daily_reading.txt
      
       # Clean the console
       echo "Press ENTER to continue."
@@ -88,14 +73,14 @@ buttons:
       # Get the start date
       while true; do
           read -r -p "Enter start date (yyyy-MM-DD): " start
-          [[ $start =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          [[ $start =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] && break
           echo "Only digits allowed."
       done
 
       # Get the stop date
       while true; do
           read -r -p "Enter end date (yyyy-MM-DD): " end
-          [[ $end =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          [[ $end =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] && break
           echo "Only digits allowed."
       done
 
@@ -112,10 +97,6 @@ buttons:
         --path out/onchain_features.csv >> out/daily_reading.txt
 
       python src/util/safe_touch_probabilities.py --date $end >> out/daily_reading.txt
-
-      python src/safe_interpreter.py
-
-      python src/safe_interpreter_v2.py
 
   - id: statistics-features-viewer
     label: Statistics - features viewer
@@ -136,26 +117,27 @@ buttons:
       # Get the start date
       while true; do
           read -r -p "Enter start date (yyyy-MM-DD): " start
-          [[ $start =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          [[ $start =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] && break
           echo "Only digits allowed."
       done
 
       # Get the stop date
       while true; do
           read -r -p "Enter end date (yyyy-MM-DD): " end
-          [[ $end =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          [[ $end =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] && break
           echo "Only digits allowed."
       done
 
       source ../.venv/bin/activate
 
       python candles_btc_features.py \
-        --input ../frontend/_data/daily_price.json \
+        --input ../statistics/out/features.csv \
+        --input-fmt csv \
         --output out.csv
 
       python candlestick_research_tool_v4.py \
         --input out.csv \
-        --key-col timestamp \
+        --key-col date \
         --start $start \
         --end $end \
         --standardize \
