@@ -20,15 +20,43 @@ typedef struct {
     uint8_t key[64];      // obfuscation key
     size_t key_len;       // number of key bytes (0 => passthrough)
     int passthrough;      // 1 if no transformation should be applied
+    uint64_t pos;         // absolute offset of the next byte read from inner
 } xor_cookie;
+
+// XOR `n` bytes of `buf`, which start at absolute file offset `pos`, with the
+// repeating key. The parser seeks backwards very often (compact sizes), and every
+// seek makes the stream refill its whole buffer through xor_read, so this loop
+// runs over far more bytes than the file holds and must be fast: no per-byte
+// modulo, and 8 bytes at a time for Bitcoin Core's 8-byte key.
+static void xor_buffer(const xor_cookie *ck, uint8_t *buf, size_t n, uint64_t pos)
+{
+    size_t klen = ck->key_len;
+    size_t k = (size_t) (pos % klen);
+    size_t i = 0;
+
+    if (klen == 8) {
+        uint8_t rotated[8];
+        for (size_t j = 0; j < 8; j++) rotated[j] = ck->key[(k + j) & 7];
+        uint64_t key64;
+        memcpy(&key64, rotated, 8);
+        for (; i + 8 <= n; i += 8) {
+            uint64_t word;
+            memcpy(&word, buf + i, 8);
+            word ^= key64;
+            memcpy(buf + i, &word, 8);
+        }
+        k = (k + i) & 7;   // i is a multiple of 8, so k is unchanged
+    }
+
+    for (; i < n; i++) {
+        buf[i] ^= ck->key[k];
+        if (++k == klen) k = 0;
+    }
+}
 
 static ssize_t xor_read(void *c, char *buf, size_t size)
 {
     xor_cookie *ck = (xor_cookie *) c;
-
-    // Absolute offset BEFORE this read, so we can key the XOR correctly.
-    long pos = ftell(ck->inner);
-    if (pos < 0) return -1;
 
     size_t n = fread(buf, 1, size, ck->inner);
     if (n == 0) {
@@ -37,11 +65,9 @@ static ssize_t xor_read(void *c, char *buf, size_t size)
     }
 
     if (!ck->passthrough && ck->key_len > 0) {
-        uint64_t offset = (uint64_t) pos;
-        for (size_t i = 0; i < n; i++) {
-            buf[i] ^= ck->key[(offset + i) % ck->key_len];
-        }
+        xor_buffer(ck, (uint8_t *) buf, n, ck->pos);
     }
+    ck->pos += n;
 
     return (ssize_t) n;
 }
@@ -54,6 +80,7 @@ static int xor_seek(void *c, off64_t *offset, int whence)
     }
     long pos = ftell(ck->inner);
     if (pos < 0) return -1;
+    ck->pos = (uint64_t) pos;
     *offset = (off64_t) pos;   // report the resulting absolute position
     return 0;
 }

@@ -10,6 +10,7 @@
 
 uint64_t BLOCK_TIME = 0;
 uint8_t BLOCK_HASH[32];
+static uint8_t PREV_HASH[32];   // previous block hash, in the same byte order as BLOCK_HASH
 
 typedef struct
 {
@@ -42,7 +43,13 @@ void block_export_magic_number(uint8_t magic_bytes[4]) {};
 
 void block_export_block_size(uint8_t block_size[4]) {};
 void block_export_header_version(uint8_t header_version[4]) {};
-void block_export_prev_hash(uint8_t prev_hash[32]) {};
+void block_export_prev_hash(uint8_t prev_hash[32])
+{
+    // The header stores the previous hash in internal byte order, while
+    // BLOCK_HASH (from get_double_sha256) is reversed into display order.
+    // Reverse prev_hash too, so a block's prev_hash equals its parent's hash.
+    for (int i = 0; i < 32; i++) PREV_HASH[i] = prev_hash[31 - i];
+};
 void block_export_merkle_root(uint8_t merkle_root[32]) {};
 
 void block_export_block_time(uint8_t block_time[4])
@@ -62,10 +69,13 @@ void block_export_block_hash(unsigned char block_hash[32])
 {
     memcpy(BLOCK_HASH, block_hash, 32);
 
-    _resize_block(131);
-    char *command = "insert into block (hash, time) values (X'";
-    _append_char(command, 41);
+    char *command = "insert into block (hash, prev_hash, time) values (X'";
+    size_t command_len = strlen(command);
+    _resize_block(command_len + 64 + 5 + 64 + 3 + 20 + 3);
+    _append_char(command, command_len);
     _append_hex(BLOCK_HASH, 32);
+    _append_char("', X'", 5);
+    _append_hex(PREV_HASH, 32);
     _append_char("', ", 3);
     _append_int(BLOCK_TIME);
     _append_char(");\n", 3);

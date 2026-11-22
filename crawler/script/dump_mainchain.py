@@ -4,7 +4,14 @@ Dump the main-chain block hashes (height 0 .. tip) to a text file, one hash per
 line, index = height. Talks directly to bitcoind's JSON-RPC over the .cookie
 auth, using a persistent HTTP connection and batched requests for speed.
 
+The node must be running with its RPC server enabled: bitcoind enables it by
+default, bitcoin-qt needs `server=1` in bitcoin.conf (or `-server`). Core writes
+the .cookie at startup and deletes it on shutdown.
+
 Usage:
+    # datadir taken from ~/.bitcoin/bitcoin.conf, or ~/.bitcoin
+    python3 dump_mainchain.py --out mainchain_hashes.txt
+
     python3 dump_mainchain.py \
         --datadir /media/mihai/Expansion/bitcoin-data \
         --out mainchain_hashes.txt
@@ -20,7 +27,9 @@ Options:
 """
 import argparse
 import http.client
+import os
 import json
+import socket
 import sys
 import time
 from pathlib import Path
@@ -32,7 +41,7 @@ class RpcError(Exception):
 
 
 class BitcoinRPC:
-    def __init__(self, url, user, password):
+    def __init__(self, url, user, password, timeout=300):
         parsed = urlparse(url)
         self.host = parsed.hostname or "127.0.0.1"
         self.port = parsed.port or 8332
@@ -42,7 +51,7 @@ class BitcoinRPC:
             "Content-Type": "application/json",
             "Authorization": "Basic " + token,
         }
-        self.conn = http.client.HTTPConnection(self.host, self.port, timeout=120)
+        self.conn = http.client.HTTPConnection(self.host, self.port, timeout=timeout)
 
     def call_single(self, method, params=None):
         payload = json.dumps({
@@ -84,8 +93,70 @@ class BitcoinRPC:
         self.conn.close()
 
 
+DEFAULT_CONF = Path.home() / ".bitcoin" / "bitcoin.conf"
+DEFAULT_DATADIR = Path.home() / ".bitcoin"
+
+
+def read_bitcoin_conf(conf_path):
+    """Top-level settings from a bitcoin.conf, as a dict.
+
+    Network sections ([main], [test], ...) are ignored: datadir and
+    rpccookiefile are top-level-only options, so reading past the first section
+    header would be wrong.
+    """
+    settings = {}
+    try:
+        lines = Path(conf_path).read_text().splitlines()
+    except OSError:
+        return settings
+    for line in lines:
+        line = line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("["):
+            break
+        if "=" in line:
+            key, value = line.split("=", 1)
+            settings[key.strip()] = value.strip()
+    return settings
+
+
+def resolve_cookie_path(cookie_arg, datadir_arg):
+    """Locate the .cookie. Explicit flags win, then bitcoin.conf, then the
+    default datadir. Returns (path, where-it-came-from) for reporting."""
+    if cookie_arg:
+        return Path(cookie_arg), "--cookie"
+    if datadir_arg:
+        return Path(datadir_arg) / ".cookie", "--datadir"
+
+    conf_path = Path(os.environ.get("BITCOIN_CONF", DEFAULT_CONF))
+    settings = read_bitcoin_conf(conf_path)
+    datadir = Path(settings["datadir"]) if "datadir" in settings else DEFAULT_DATADIR
+
+    if "rpccookiefile" in settings:
+        cookie = Path(settings["rpccookiefile"])
+        if not cookie.is_absolute():
+            cookie = datadir / cookie
+        return cookie, f"rpccookiefile in {conf_path}"
+    if "datadir" in settings:
+        return datadir / ".cookie", f"datadir in {conf_path}"
+    return datadir / ".cookie", "default datadir"
+
+
 def read_cookie(cookie_path):
-    text = Path(cookie_path).read_text().strip()
+    try:
+        text = Path(cookie_path).read_text().strip()
+    except FileNotFoundError:
+        raise RpcError(
+            f"No cookie file at {cookie_path}.\n"
+            "Bitcoin Core writes it at startup and removes it on shutdown, so the\n"
+            "node must be running with its RPC server enabled:\n"
+            "  bitcoind   enables RPC by default\n"
+            "  bitcoin-qt needs server=1 in bitcoin.conf, or -server on the command line\n"
+            "Pass --cookie/--datadir if the cookie lives somewhere else."
+        )
+    except OSError as exc:
+        raise RpcError(f"Cannot read cookie file {cookie_path}: {exc}")
     if ":" not in text:
         raise RpcError(f"Malformed cookie file: {cookie_path}")
     user, password = text.split(":", 1)
@@ -101,20 +172,49 @@ def main():
     ap.add_argument("--batch", type=int, default=2000)
     ap.add_argument("--start", type=int, default=0)
     ap.add_argument("--end", type=int, default=-1)
+    ap.add_argument("--timeout", type=int, default=300,
+                    help="seconds to wait per RPC request. A syncing node holds "
+                         "cs_main while validating, so chain calls can queue for "
+                         "minutes (default 300)")
     args = ap.parse_args()
 
-    # Resolve cookie
-    cookie_path = args.cookie
-    if not cookie_path and args.datadir:
-        cookie_path = str(Path(args.datadir) / ".cookie")
-    if not cookie_path:
-        sys.stderr.write("Need --cookie or --datadir to authenticate.\n")
+    cookie_path, source = resolve_cookie_path(args.cookie, args.datadir)
+    sys.stderr.write(f"Using cookie {cookie_path} (from {source})\n")
+
+    try:
+        user, password = read_cookie(cookie_path)
+    except RpcError as exc:
+        sys.stderr.write(f"{exc}\n")
         raise SystemExit(1)
 
-    user, password = read_cookie(cookie_path)
-    rpc = BitcoinRPC(args.rpc, user, password)
+    rpc = BitcoinRPC(args.rpc, user, password, timeout=args.timeout)
 
-    tip = args.end if args.end >= 0 else rpc.call_single("getblockcount")
+    try:
+        tip = args.end if args.end >= 0 else rpc.call_single("getblockcount")
+    except socket.timeout:
+        sys.stderr.write(
+            f"No reply from {args.rpc} within {args.timeout}s.\n"
+            "The RPC server is listening but busy: a node in initial block download\n"
+            "holds cs_main while it validates, so getblockcount/getblockhash queue\n"
+            "behind it (check `uptime`, which needs no lock, to confirm RPC is up).\n"
+            "Either wait for the sync to finish, pause it with\n"
+            "`bitcoin-cli setnetworkactive false` while you dump, or raise --timeout.\n"
+        )
+        raise SystemExit(1)
+    except OSError as exc:
+        sys.stderr.write(
+            f"Cannot reach the RPC server at {args.rpc}: {exc}\n"
+            "Nothing is listening there. bitcoin-qt only serves RPC with server=1 in\n"
+            "bitcoin.conf (or -server); check rpcport/rpcbind too.\n"
+        )
+        raise SystemExit(1)
+    except RpcError as exc:
+        sys.stderr.write(
+            f"RPC call failed: {exc}\n"
+            "A 503 here means the node is still loading the block index; retry once\n"
+            "it finishes starting up.\n"
+        )
+        raise SystemExit(1)
     start = args.start
     sys.stderr.write(f"Fetching main-chain hashes for heights {start}..{tip} "
                      f"(batch={args.batch})\n")

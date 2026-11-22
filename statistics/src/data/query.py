@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
 import subprocess
@@ -14,16 +14,24 @@ from src.data import binance
 
 STATISTICS_DIR = Path(__file__).resolve().parents[2]
 STATISTICS_DATA_DIR = STATISTICS_DIR / "data"
-GENESIS_DATE = "03-01-2009 20:15:05"
+# All dates are UTC, exactly as the block timestamps are on the blockchain.
+GENESIS_DATE = "03-01-2009 18:15:05"
 DATE_FORMAT = "%d-%m-%Y %H:%M:%S"
-DAT_FILES = Path("/media/mihai/BTC/bitcoin-data/blocks")
+# The node and its blk*.dat files live on the HDD; the databases on the SSD.
+# The node writes continuously, the databases are written once and then only read.
+DAT_FILES = Path("/media/mihai/Expansion/bitcoin-data/blocks")
 DATABASE_FOLDER = Path("/media/mihai/BTC/db")
+CRAWL_BIN = DATABASE_FOLDER / "crawl"
 BTC_AMOUNT_DB = DATABASE_FOLDER / "btc_amounts.db"
-BTC_QUERY_CONFIG = Path("/media/mihai/BTC/bitcoin-data/.btc_query_config")
+CHAIN_DB = DATABASE_FOLDER / "chain.db"
+BTC_QUERY_CONFIG = DATABASE_FOLDER / ".btc_query_config"
+# Blocks closer than this to the tip are left out of the main chain: two competing
+# blocks at the tip are only settled once more blocks are built on top of them.
+MIN_CONFIRMATIONS = 6
 DEFAULT_DAY_PARSE_CONFIG = {
-            "last_day_amount_db_parse": "/media/mihai/BTC/db/blk00000.db",
+            "last_day_amount_db_parse": str(DATABASE_FOLDER / "blk00000.db"),
             "last_day_amount_datetime_parse": 1231006505,
-            "last_dat_file_parsed": "/media/mihai/BTC/bitcoin-data/blocks/blk04753.dat"
+            "last_dat_file_parsed": str(DAT_FILES / "blk00000.dat")
         }
 TX_SIZE_BUCKETS = [
     ("0-0.001 BTC", 0, 100_000),
@@ -36,6 +44,45 @@ TX_SIZE_BUCKETS = [
     ("1000+ BTC", 100_000_000_000, None)
 ]
 
+
+def utc_from_timestamp(timestamp) -> datetime:
+    """Block timestamp (Unix seconds) -> timezone-aware UTC datetime."""
+    return datetime.fromtimestamp(timestamp, timezone.utc)
+
+def parse_utc(text: str) -> datetime:
+    """A DATE_FORMAT string, read as UTC (never as the machine's local time)."""
+    return datetime.strptime(text, DATE_FORMAT).replace(tzinfo=timezone.utc)
+
+def load_config() -> dict:
+    """Read the query config, creating it with the defaults if it does not exist."""
+    if not BTC_QUERY_CONFIG.exists():
+        save_config(dict(DEFAULT_DAY_PARSE_CONFIG))
+    return json.loads(BTC_QUERY_CONFIG.read_text())
+
+def save_config(config: dict):
+    if BTC_QUERY_CONFIG.exists():
+        os.chmod(BTC_QUERY_CONFIG, 0o666)
+    BTC_QUERY_CONFIG.write_text(json.dumps(config))
+    os.chmod(BTC_QUERY_CONFIG, 0o444)
+
+def connect_readonly(database) -> sqlite3.Connection:
+    """Open a per-file database for queries without writing anything to disk.
+
+    mode=ro&immutable=1: no journal, no locks, no writes (the databases are
+    read-only once loaded). temp_store=MEMORY keeps sort/GROUP BY temp files in
+    RAM instead of on the SSD. chain.db is attached, also read-only, so queries
+    can keep only main-chain blocks (see MAIN_CHAIN_JOIN).
+    """
+    conn = sqlite3.connect(f"file:{database}?mode=ro&immutable=1", uri=True)
+    conn.execute("PRAGMA temp_store = MEMORY;")
+    conn.execute("ATTACH DATABASE ? AS chain;", (f"file:{CHAIN_DB}?mode=ro&immutable=1",))
+    return conn
+
+# Keeps a block only if it is on the main chain AND this database is the file the
+# block was first stored in. That drops stale (orphan) blocks and counts a block
+# that was written to two blk*.dat files only once. Bind :db_file to the
+# database's file name, e.g. "blk00012.db".
+MAIN_CHAIN_JOIN = "JOIN chain.main_chain AS m ON m.hash = b.hash AND m.db_file = :db_file"
 
 def _build_tx_size_query() -> str:
     """
@@ -60,6 +107,7 @@ def _build_tx_size_query() -> str:
             FROM tx AS t
             JOIN out AS o ON o.tx_hash = t.hash
             JOIN block AS b ON t.block_hash = b.hash
+            {MAIN_CHAIN_JOIN}
             GROUP BY t.hash
         )
         SELECT date(block_time, 'unixepoch') AS day,
@@ -77,8 +125,10 @@ def get_day_btc_amount(database="blk*.db", verbose=True):
     """
 
     dbs = sorted(DATABASE_FOLDER.rglob(database))
-    config = json.loads(BTC_QUERY_CONFIG.read_text())
+    config = load_config()
+    ensure_amount_db()
 
+    last_time = None
     last_path = Path(config['last_day_amount_db_parse'])
     if last_path in dbs:
         index = dbs.index(last_path)
@@ -89,19 +139,25 @@ def get_day_btc_amount(database="blk*.db", verbose=True):
         if verbose:
             print(f"Handling {in_db}")
 
-        conn = sqlite3.connect(in_db)
-        cursor = conn.cursor()
+        # Only main-chain blocks: the time pointer must not move past blocks that
+        # are not counted yet (e.g. ones still too close to the tip).
+        conn = connect_readonly(in_db)
+        db_min_time, max_time = conn.execute(
+            f"SELECT min(b.time), max(b.time) FROM block AS b {MAIN_CHAIN_JOIN};",
+            {"db_file": in_db.name},
+        ).fetchone()
+        conn.close()
+        if max_time is None:
+            continue  # no main-chain blocks in this database (yet)
 
         if last_time:
             min_time = int(last_time)
             last_time = 0
         else:
-            min_time = cursor.execute("SELECT min(time) FROM block;").fetchone()[0]
-        max_time = cursor.execute("SELECT max(time) FROM block;").fetchone()[0]
-        conn.close()
+            min_time = db_min_time
 
-        min_date = datetime.fromtimestamp(min_time)
-        max_date = datetime.fromtimestamp(max_time)
+        min_date = utc_from_timestamp(min_time)
+        max_date = utc_from_timestamp(max_time)
 
         amounts = get_btc_amount(
             in_db,
@@ -128,15 +184,23 @@ def get_day_btc_amount(database="blk*.db", verbose=True):
 
             if verbose:
                 print(f"Upserting {date}, {amount} into days.")
-            cursor.execute(command, (date, amount, amount))
+            cursor.execute(command, (date.isoformat(), amount, amount))
 
         conn.commit()
         conn.close()
 
         os.chmod(BTC_AMOUNT_DB, 0o444)
-        os.chmod(BTC_QUERY_CONFIG, 0o666)
-        BTC_QUERY_CONFIG.write_text(json.dumps(config))
-        os.chmod(BTC_QUERY_CONFIG, 0o444)
+        save_config(config)
+
+def ensure_amount_db():
+    """Create btc_amounts.db with its days table if it does not exist yet."""
+    if BTC_AMOUNT_DB.exists():
+        return
+    conn = sqlite3.connect(str(BTC_AMOUNT_DB))
+    conn.execute("CREATE TABLE IF NOT EXISTS days (date TEXT PRIMARY KEY, amount REAL);")
+    conn.commit()
+    conn.close()
+    os.chmod(BTC_AMOUNT_DB, 0o444)
 
 def round_datetime(date: datetime, interval: str, direction: str):
     """Rounds a datetime object to the nearest specified interval.
@@ -206,27 +270,28 @@ def get_btc_amount(database: str, start: str, end: str, interval='day'):
 
     try:
         # To Unix Epoch time
-        start_date = int(datetime.strptime(start, DATE_FORMAT).timestamp())
-        end_date = int(datetime.strptime(end, DATE_FORMAT).timestamp())
+        start_date = int(parse_utc(start).timestamp())
+        end_date = int(parse_utc(end).timestamp())
 
     except ValueError as e:
         raise ValueError(f"Date format error: {e}")
 
     # Query the database
-    conn = sqlite3.connect(database)
+    conn = connect_readonly(database)
     cursor = conn.cursor()
 
-    command = """
+    command = f"""
         SELECT b.time, o.amount
         FROM out AS o JOIN tx AS t ON o.tx_hash = t.hash
         JOIN block AS b ON t.block_hash = b.hash
-        WHERE b.time >= ? AND b.time <= ?;
+        {MAIN_CHAIN_JOIN}
+        WHERE b.time >= :start AND b.time <= :end;
     """
-    cursor.execute(command, (start_date, end_date))
+    cursor.execute(command, {"db_file": Path(database).name, "start": start_date, "end": end_date})
 
     out = {}
     amount_sum = 0
-    high_end = round_datetime(datetime.strptime(start, DATE_FORMAT), interval, 'up')
+    high_end = round_datetime(parse_utc(start), interval, 'up')
     high_end = int(high_end.timestamp())
 
     for row in cursor:
@@ -235,16 +300,16 @@ def get_btc_amount(database: str, start: str, end: str, interval='day'):
         if current_datetime < high_end:
             amount_sum += row[1]
         else:
-            key = round_datetime(datetime.fromtimestamp(high_end), interval, 'down')
+            key = round_datetime(utc_from_timestamp(high_end), interval, 'down')
             key = key.strftime(DATE_FORMAT)
             out[key] = amount_sum / 100000000
             amount_sum = row[1]
 
             while high_end < current_datetime:
-                high_end = round_datetime(datetime.fromtimestamp(high_end), interval, 'up')
+                high_end = round_datetime(utc_from_timestamp(high_end), interval, 'up')
                 high_end = high_end.timestamp()
 
-    key = round_datetime(datetime.fromtimestamp(high_end), interval, 'down')
+    key = round_datetime(utc_from_timestamp(high_end), interval, 'down')
     key = key.strftime(DATE_FORMAT)
     out[key] = amount_sum / 100000000
 
@@ -260,7 +325,7 @@ def parse_dat_file(dat_file="blk*.dat", verbose=True):
     dat_files = sorted(DAT_FILES.rglob(dat_file))
 
     # Parse the configuration file to get the last dat file parsed
-    config = json.loads(BTC_QUERY_CONFIG.read_text())
+    config = load_config()
     last_path = Path(config['last_dat_file_parsed'])
 
     # Start parsing from the latest dat file stored in the config file
@@ -285,6 +350,7 @@ def parse_dat_file(dat_file="blk*.dat", verbose=True):
             command = """
                 CREATE TABLE IF NOT EXISTS block (
                     hash BLOB PRIMARY KEY ON CONFLICT IGNORE,
+                    prev_hash BLOB,
                     time INTEGER
                 );
             """
@@ -312,14 +378,16 @@ def parse_dat_file(dat_file="blk*.dat", verbose=True):
             conn.commit()
             conn.close()
 
-        try:
-            crawl_process = subprocess.run(
-                ["/media/mihai/BTC/db/crawl", str(file)],
-                capture_output=True,
-                text=True,
+        crawl_process = subprocess.run(
+            [str(CRAWL_BIN), str(file)],
+            capture_output=True,
+            text=True,
+        )
+        if crawl_process.returncode != 0:
+            # Do not load partial output: stop here, the next run resumes at this file.
+            raise RuntimeError(
+                f"crawl failed on {file} (exit {crawl_process.returncode}):\n{crawl_process.stderr}"
             )
-        except subprocess.CalledProcessError as e:
-            print(e)
 
         sql_commands = crawl_process.stdout
 
@@ -336,10 +404,78 @@ def parse_dat_file(dat_file="blk*.dat", verbose=True):
         )
         os.chmod(database, 0o444)
 
+        add_blocks_to_chain(database)
+
         config['last_dat_file_parsed'] = str(file)
-        os.chmod(BTC_QUERY_CONFIG, 0o666)
-        BTC_QUERY_CONFIG.write_text(json.dumps(config))
-        os.chmod(BTC_QUERY_CONFIG, 0o444)
+        save_config(config)
+
+def add_blocks_to_chain(database: Path):
+    """Copy a per-file database's blocks into chain.db.
+
+    A block written to two blk*.dat files keeps the first file it was seen in
+    (PRIMARY KEY ON CONFLICT IGNORE), which becomes its canonical database.
+    """
+    chain = sqlite3.connect(str(CHAIN_DB))
+    chain.execute("""
+        CREATE TABLE IF NOT EXISTS block (
+            hash BLOB PRIMARY KEY ON CONFLICT IGNORE,
+            prev_hash BLOB NOT NULL,
+            time INTEGER,
+            db_file TEXT NOT NULL
+        );
+    """)
+    chain.execute("CREATE INDEX IF NOT EXISTS block_prev ON block(prev_hash);")
+    chain.execute("ATTACH DATABASE ? AS f;", (str(database),))
+    chain.execute(
+        "INSERT INTO block (hash, prev_hash, time, db_file) "
+        "SELECT hash, prev_hash, time, ? FROM f.block;",
+        (database.name,),
+    )
+    chain.commit()
+    chain.execute("DETACH DATABASE f;")
+    chain.close()
+
+def build_main_chain(min_confirmations=MIN_CONFIRMATIONS, verbose=True):
+    """Rebuild chain.main_chain (height, hash, db_file) from the prev_hash links.
+
+    Heights are computed walking forward from genesis (prev_hash = 32 zero bytes);
+    the main chain is the path walked back from the highest block. Blocks not on
+    that path are stale (orphan) blocks. The newest `min_confirmations` blocks are
+    left out until they are settled. Blocks after a gap (a parent not loaded yet)
+    get no height and join the main chain once the gap is filled.
+    """
+    conn = sqlite3.connect(str(CHAIN_DB))
+    conn.executescript(f"""
+        PRAGMA temp_store = MEMORY;
+        BEGIN;
+        DROP TABLE IF EXISTS main_chain;
+        CREATE TEMP TABLE heights AS
+        WITH RECURSIVE h(hash, height) AS (
+            SELECT hash, 0 FROM block WHERE prev_hash = zeroblob(32)
+            UNION ALL
+            SELECT b.hash, h.height + 1 FROM block AS b JOIN h ON b.prev_hash = h.hash
+        ) SELECT * FROM h;
+        CREATE TABLE main_chain AS
+        WITH RECURSIVE m(hash, height) AS (
+            SELECT * FROM (SELECT hash, height FROM heights ORDER BY height DESC, hash LIMIT 1)
+            UNION ALL
+            SELECT b.prev_hash, m.height - 1 FROM m JOIN block AS b ON b.hash = m.hash
+            WHERE m.height > 0
+        )
+        SELECT m.height, m.hash, b.db_file FROM m JOIN block AS b ON b.hash = m.hash
+        WHERE m.height <= (SELECT max(height) FROM heights) - {int(min_confirmations)};
+        CREATE UNIQUE INDEX main_chain_hash ON main_chain(hash);
+        CREATE INDEX main_chain_file ON main_chain(db_file);
+        COMMIT;
+    """)
+    if verbose:
+        blocks, = conn.execute("SELECT count(*) FROM block;").fetchone()
+        main, top = conn.execute("SELECT count(*), max(height) FROM main_chain;").fetchone()
+        tip, = conn.execute("SELECT max(height) FROM heights;").fetchone()
+        print(f"Main chain: {main} blocks (height 0..{top}, tip {tip}); "
+              f"{blocks} blocks stored; {blocks - main} not counted "
+              f"(stale, duplicates' extra copies are not stored, or < {min_confirmations} confirmations)")
+    conn.close()
 
 def export_data_to_json(db_path, output_path, query):
     """
@@ -355,7 +491,7 @@ def export_data_to_json(db_path, output_path, query):
                        "select json_group_object(timestamp, close) from data;"
     """
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         cursor = conn.cursor()
 
         cursor.execute(query)
@@ -416,31 +552,6 @@ def update_daily_price(output_path, symbol="BTCUSDT"):
     output_file.write_text(json.dumps(updated, indent=4))
     print(f"Daily price updated at {output_path}")
 
-def get_block_duplicates():
-    # Get the databases sorted
-    databases = sorted(DATABASE_FOLDER.rglob("blk*.db")) 
-    hashes = set()
-
-    # Loop through the databases
-    for db in databases:
-        conn = sqlite3.connect(db)
-        cursor = conn.cursor()
-
-        # Get the the times from the current database
-        db_hashes = set()
-        result = cursor.execute("SELECT hex(hash) FROM block;").fetchall()
-        db_hashes.update(result)
-
-        # Check if time exists in the set
-        intersection = hashes.intersection(db_hashes)
-        if len(intersection) > 0:
-            print(f"{db} already contains {intersection}")
-            exit(1)
-        hashes.update(result)
-
-        # Close the database connection
-        conn.close()
-
 def export_daily_tx_sizes(output_path, database_pattern="blk*.db"):
     """
     Exports daily transaction count distributions across predefined BTC amount buckets.
@@ -467,7 +578,7 @@ def export_daily_tx_sizes(output_path, database_pattern="blk*.db"):
     
     # Prepare the accumulator with the already finalized days.
     daily_counts = {day: list(counts) for day, counts in existing_data.items()}
-    config = json.loads(BTC_QUERY_CONFIG.read_text())
+    config = load_config()
 
     dbs = sorted(DATABASE_FOLDER.rglob(database_pattern))
     start_db = Path(config.get("last_tx_size_db_parsed", "")) if config.get("last_tx_size_db_parsed") else None
@@ -480,24 +591,28 @@ def export_daily_tx_sizes(output_path, database_pattern="blk*.db"):
 
     for db in dbs:
         print(f"Query {db} for tx sizes.")
-        with sqlite3.connect(db) as conn:
-            for row in conn.execute(_build_tx_size_query()):
-                day = row[0]
-                bucket_values = row[1:]
+        conn = connect_readonly(db)
+        try:
+            rows = conn.execute(_build_tx_size_query(), {"db_file": db.name}).fetchall()
+        finally:
+            conn.close()
+        for row in rows:
+            day = row[0]
+            bucket_values = row[1:]
 
-                if last_recorded_day and day < last_recorded_day:
-                    continue
+            if last_recorded_day and day < last_recorded_day:
+                continue
 
-                if last_recorded_day and day == last_recorded_day:
-                    seen_existing_last_day = True
+            if last_recorded_day and day == last_recorded_day:
+                seen_existing_last_day = True
 
-                day_totals = daily_counts.setdefault(day, [0] * len(TX_SIZE_BUCKETS))
-                for idx, value in enumerate(bucket_values):
-                    day_totals[idx] += value
+            day_totals = daily_counts.setdefault(day, [0] * len(TX_SIZE_BUCKETS))
+            for idx, value in enumerate(bucket_values):
+                day_totals[idx] += value
 
-                if latest_day_seen is None or day > latest_day_seen:
-                    latest_day_seen = day
-                    updated_db_pointer = str(db)
+            if latest_day_seen is None or day > latest_day_seen:
+                latest_day_seen = day
+                updated_db_pointer = str(db)
 
     if last_recorded_day and not seen_existing_last_day and last_recorded_counts:
         # The previous day was not rebuilt (likely no new data); restore it.
@@ -509,15 +624,13 @@ def export_daily_tx_sizes(output_path, database_pattern="blk*.db"):
 
     if updated_db_pointer:
         config["last_tx_size_db_parsed"] = updated_db_pointer
-        os.chmod(BTC_QUERY_CONFIG, 0o666)
-        BTC_QUERY_CONFIG.write_text(json.dumps(config))
-        os.chmod(BTC_QUERY_CONFIG, 0o444)
+        save_config(config)
 
     print(f"Daily transaction sizes exported to {output_path}")
 
 def prepare_data():
     parse_dat_file()
-    get_block_duplicates()
+    build_main_chain()
     get_day_btc_amount()
 
 def export_data():

@@ -1,22 +1,24 @@
 // Stats export backend.
 //
-// Instead of emitting SQL, this backend accumulates, per UTC day, the number of
-// transactions falling into each predefined output-total size bucket, then emits
-// a partial JSON document on flush (end of the .dat file).
+// Emits one row per block: the block hash, the block's UTC day, and how many of
+// the block's transactions fall into each output-total size bucket. Rows are
+// written as a JSON document on flush (end of the .dat file):
 //
-// The size of a transaction is defined exactly as in the old Python pipeline's
-// _build_tx_size_query: the sum of that transaction's output amounts, in satoshi.
-// The day is date(block_time, 'unixepoch') -> the UTC calendar day of the block
-// timestamp.
-//
-// Output format matches export_daily_tx_sizes exactly:
 //   [
-//       ["date", "0-0.001 BTC", "0.001-0.01 BTC", ... , "1000+ BTC"],
-//       ["2009-01-03", 1, 0, 0, 0, 0, 0, 0, 0],
+//       ["block_hash", "date", "0-0.001 BTC", ... , "1000+ BTC"],
+//       ["000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f", "2009-01-03", 0, 0, 0, 0, 0, 1, 0, 0],
 //       ...
 //   ]
-// Because one .dat file may contain days that also appear in a neighbouring file,
-// these partials are combined afterwards by a small Python script (sum per day).
+//
+// The block hash is printed exactly like bitcoind's RPC prints it (lowercase hex,
+// display byte order), so it can be matched against the main-chain hash list
+// produced by dump_mainchain.py. Per-day aggregation, de-duplication and
+// filtering out blocks that are not on the main chain happen in
+// build_daily_tx_size.py.
+//
+// The size of a transaction is the sum of its output amounts in satoshi, the
+// same definition as _build_tx_size_query in the old Python pipeline. The day is
+// date(block_time, 'unixepoch'), the UTC calendar day of the block timestamp.
 
 #include <stdint.h>
 #include <string.h>
@@ -29,8 +31,8 @@
 
 #define NUM_BUCKETS 8
 
-// Bucket lower bounds in satoshi (upper bound is the next bucket's lower bound;
-// the last bucket has no upper bound). Mirrors TX_SIZE_BUCKETS in query.py.
+// Bucket lower bounds in satoshi; a bucket ends where the next one starts and
+// the last bucket is open-ended. Mirrors TX_SIZE_BUCKETS in query.py.
 static const uint64_t BUCKET_LOWER[NUM_BUCKETS] = {
     0ULL,
     100000ULL,
@@ -53,73 +55,92 @@ static const char *BUCKET_LABELS[NUM_BUCKETS] = {
     "1000+ BTC"
 };
 
-// --- Per-day accumulator -----------------------------------------------------
+// --- Per-block state ---------------------------------------------------------
 
-typedef struct {
-    int32_t day;                     // days since the Unix epoch (UTC)
-    uint64_t counts[NUM_BUCKETS];    // tx counts per bucket for that day
-} day_entry;
-
-static day_entry *DAYS = NULL;
-static size_t DAYS_LEN = 0;
-static size_t DAYS_CAP = 0;
-
-// Current block timestamp (set by stats_export_block_time).
 static uint64_t CURRENT_BLOCK_TIME = 0;
+static uint8_t CURRENT_BLOCK_HASH[32];
+static uint64_t CURRENT_BLOCK_TX_COUNT = 0;     // transactions the block declares
+static uint64_t CURRENT_BLOCK_TX_DONE = 0;      // transactions parsed so far
+static uint64_t CURRENT_BLOCK_COUNTS[NUM_BUCKETS];
 
 // Running total of the current transaction's output amounts, in satoshi.
 static uint64_t CURRENT_TX_TOTAL = 0;
 
-// Find or create the accumulator entry for a given UTC day index.
-// DAYS is kept sorted by day, so we can binary-search and insert in order.
-static day_entry *get_day_entry(int32_t day)
-{
-    // Binary search for `day`.
-    size_t lo = 0;
-    size_t hi = DAYS_LEN;
-    while (lo < hi) {
-        size_t mid = lo + (hi - lo) / 2;
-        if (DAYS[mid].day < day) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-
-    if (lo < DAYS_LEN && DAYS[lo].day == day) {
-        return &DAYS[lo];
-    }
-
-    // Need to insert a new entry at position `lo`.
-    if (DAYS_LEN == DAYS_CAP) {
-        size_t new_cap = (DAYS_CAP == 0) ? 64 : DAYS_CAP * 2;
-        day_entry *grown = (day_entry *) realloc(DAYS, new_cap * sizeof(day_entry));
-        if (grown == NULL) {
-            perror("Error resizing DAYS accumulator");
-            exit(1);
-        }
-        DAYS = grown;
-        DAYS_CAP = new_cap;
-    }
-
-    memmove(&DAYS[lo + 1], &DAYS[lo], (DAYS_LEN - lo) * sizeof(day_entry));
-    DAYS[lo].day = day;
-    memset(DAYS[lo].counts, 0, sizeof(DAYS[lo].counts));
-    DAYS_LEN++;
-
-    return &DAYS[lo];
-}
+// Whether the JSON header row has been written for this file.
+static int HEADER_WRITTEN = 0;
 
 static int bucket_for_amount(uint64_t total)
 {
-    // Highest bucket whose lower bound is <= total. Buckets are contiguous and
-    // ascending, so walk from the top.
     for (int i = NUM_BUCKETS - 1; i >= 0; i--) {
         if (total >= BUCKET_LOWER[i]) {
             return i;
         }
     }
-    return 0; // total == 0 lands in bucket 0 ([0, 100000))
+    return 0;
+}
+
+static void write_all(const char *buffer, size_t length)
+{
+    size_t offset = 0;
+    while (offset < length) {
+        ssize_t written = write(STDOUT_FILENO, buffer + offset, length - offset);
+        if (written <= 0) break;
+        offset += (size_t) written;
+    }
+}
+
+static void append_str(const char *s)
+{
+    size_t len = strlen(s);
+    _resize_block(len);
+    _append_char((char *) s, len);
+}
+
+static void write_header_row(void)
+{
+    append_str("[\n    [\"block_hash\", \"date\"");
+    for (int b = 0; b < NUM_BUCKETS; b++) {
+        append_str(", \"");
+        append_str(BUCKET_LABELS[b]);
+        append_str("\"");
+    }
+    append_str("]");
+    HEADER_WRITTEN = 1;
+}
+
+// Append the finished block's row to the output buffer.
+static void emit_block_row(void)
+{
+    static const char HEX[] = "0123456789abcdef";
+
+    if (!HEADER_WRITTEN) write_header_row();
+
+    char hash_hex[65];
+    for (int i = 0; i < 32; i++) {
+        hash_hex[2 * i] = HEX[(CURRENT_BLOCK_HASH[i] >> 4) & 0x0F];
+        hash_hex[2 * i + 1] = HEX[CURRENT_BLOCK_HASH[i] & 0x0F];
+    }
+    hash_hex[64] = '\0';
+
+    time_t t = (time_t) CURRENT_BLOCK_TIME;
+    struct tm tm_utc;
+    gmtime_r(&t, &tm_utc);
+    char day[11];
+    strftime(day, sizeof(day), "%Y-%m-%d", &tm_utc);
+
+    append_str(",\n    [\"");
+    append_str(hash_hex);
+    append_str("\", \"");
+    append_str(day);
+    append_str("\"");
+
+    char num[24];
+    for (int b = 0; b < NUM_BUCKETS; b++) {
+        snprintf(num, sizeof(num), ", %llu",
+                 (unsigned long long) CURRENT_BLOCK_COUNTS[b]);
+        append_str(num);
+    }
+    append_str("]");
 }
 
 // --- Callbacks ---------------------------------------------------------------
@@ -143,10 +164,21 @@ void stats_export_block_time(uint8_t block_time[4])
 
 void stats_export_nbytes(uint8_t nbyes[4]) { (void) nbyes; }
 void stats_export_nonce(uint8_t nonce[4]) { (void) nonce; }
-void stats_export_block_hash(unsigned char block_hash[32]) { (void) block_hash; }
+
+void stats_export_block_hash(unsigned char block_hash[32])
+{
+    // A new block starts: remember its hash and reset its counters.
+    memcpy(CURRENT_BLOCK_HASH, block_hash, 32);
+    memset(CURRENT_BLOCK_COUNTS, 0, sizeof(CURRENT_BLOCK_COUNTS));
+    CURRENT_BLOCK_TX_COUNT = 0;
+    CURRENT_BLOCK_TX_DONE = 0;
+}
 
 // Transaction count
-void stats_export_transaction_count(uint64_t tx_count) { (void) tx_count; }
+void stats_export_transaction_count(uint64_t tx_count)
+{
+    CURRENT_BLOCK_TX_COUNT = tx_count;
+}
 
 // Transaction
 void stats_export_tx_version(uint8_t tx_version[4]) { (void) tx_version; }
@@ -164,8 +196,7 @@ void stats_export_tx_in_sequence(uint8_t tx_in_sequence[4]) { (void) tx_in_seque
 void stats_export_tx_out_count(uint64_t tx_out_count)
 {
     (void) tx_out_count;
-    // A new transaction's outputs are about to be parsed: reset the running total.
-    CURRENT_TX_TOTAL = 0;
+    CURRENT_TX_TOTAL = 0;   // a new transaction's outputs follow
 }
 
 void stats_export_amount(uint8_t amount[8])
@@ -195,81 +226,23 @@ void stats_export_lock_time(uint8_t lock_time[4]) { (void) lock_time; }
 void stats_export_tx_hash(uint8_t tx_hash[32])
 {
     (void) tx_hash;
-    // End of a transaction: CURRENT_TX_TOTAL now holds the sum of its outputs.
-    // Attribute it to the block's UTC day and the appropriate size bucket.
-    int32_t day = (int32_t) (CURRENT_BLOCK_TIME / 86400ULL);
-    day_entry *entry = get_day_entry(day);
-    int bucket = bucket_for_amount(CURRENT_TX_TOTAL);
-    entry->counts[bucket]++;
-}
+    // End of a transaction: CURRENT_TX_TOTAL holds the sum of its outputs.
+    CURRENT_BLOCK_COUNTS[bucket_for_amount(CURRENT_TX_TOTAL)]++;
+    CURRENT_BLOCK_TX_DONE++;
 
-// Convert a day index (days since epoch) to "YYYY-MM-DD" (UTC), matching
-// SQLite's date(..., 'unixepoch').
-static void format_day(int32_t day, char *out /* at least 11 bytes */)
-{
-    time_t t = (time_t) day * 86400;
-    struct tm tm_utc;
-    gmtime_r(&t, &tm_utc);
-    // strftime is safe here; small fixed output.
-    strftime(out, 11, "%Y-%m-%d", &tm_utc);
+    // Last transaction of the block: the block's row is complete.
+    if (CURRENT_BLOCK_TX_DONE == CURRENT_BLOCK_TX_COUNT) {
+        emit_block_row();
+    }
 }
 
 void stats_export_flush(void)
 {
-    // Emit the partial JSON document to stdout.
-    // Header row.
+    // Always produce valid JSON, even for a file with no complete block.
+    if (!HEADER_WRITTEN) write_header_row();
+    append_str("\n]\n");
+
+    write_all(PARSED_BLOCK, (size_t) PARSED_BLOCK_INDEX);
     _reset();
-
-    // Rough upper bound per line; _resize_block grows as needed anyway.
-    _resize_block(256);
-    _append_char("[\n    [\"date\"", 13);
-    for (int b = 0; b < NUM_BUCKETS; b++) {
-        _append_char(", \"", 3);
-        size_t len = strlen(BUCKET_LABELS[b]);
-        _resize_block(len + 8);
-        _append_char((char *) BUCKET_LABELS[b], len);
-        _append_char("\"", 1);
-    }
-    _append_char("]", 1);
-
-    char daybuf[11];
-    for (size_t i = 0; i < DAYS_LEN; i++) {
-        format_day(DAYS[i].day, daybuf);
-
-        // ",\n    [\"YYYY-MM-DD\"" + 8 * (", " + up to 20 digits) + "]"
-        _resize_block(32 + NUM_BUCKETS * 24);
-        _append_char(",\n    [\"", 8);
-        _append_char(daybuf, 10);
-        _append_char("\"", 1);
-
-        for (int b = 0; b < NUM_BUCKETS; b++) {
-            _append_char(", ", 2);
-            // Write the count as a decimal without fixed-width padding.
-            char numbuf[21];
-            int n = snprintf(numbuf, sizeof(numbuf), "%llu",
-                             (unsigned long long) DAYS[i].counts[b]);
-            _append_char(numbuf, (uint64_t) n);
-        }
-        _append_char("]", 1);
-    }
-
-    _resize_block(4);
-    _append_char("\n]\n", 3);
-
-    // Write everything out.
-    size_t offset = 0;
-    while (offset < PARSED_BLOCK_INDEX) {
-        ssize_t written = write(STDOUT_FILENO, PARSED_BLOCK + offset,
-                                (size_t) PARSED_BLOCK_INDEX - offset);
-        if (written <= 0) break;
-        offset += (size_t) written;
-    }
-
-    _reset();
-
-    // Free the accumulator so a subsequent run in the same process starts clean.
-    free(DAYS);
-    DAYS = NULL;
-    DAYS_LEN = 0;
-    DAYS_CAP = 0;
+    HEADER_WRITTEN = 0;
 }
