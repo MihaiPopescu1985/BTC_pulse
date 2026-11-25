@@ -22,33 +22,33 @@ This layer converts calibrated rule permissions into discrete structural signal 
 
 | signal_state | row_count | row_share | avg_run_length_days | buy_zone_5_rate | sell_zone_5_rate | avg_clarity | avg_conflict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| NO_SIGNAL | 2225.000 | 70.5% | 5.045 | 20.0% | 16.8% | 0.171 | 0.182 |
-| SELL_SIGNAL_NEW | 307.000 | 9.7% | 1.000 | 2.0% | 52.1% | 0.401 | 0.159 |
-| SELL_SIGNAL_ACTIVE | 273.000 | 8.6% | 2.007 | 3.3% | 50.9% | 0.425 | 0.166 |
-| LONG_SIGNAL_NEW | 159.000 | 5.0% | 1.000 | 49.7% | 0.6% | 0.370 | 0.156 |
-| SIGNAL_INVALIDATED | 146.000 | 4.6% | 1.000 | 21.2% | 20.5% | 0.139 | 0.189 |
-| LONG_SIGNAL_ACTIVE | 48.000 | 1.5% | 1.200 | 50.0% | 2.1% | 0.382 | 0.159 |
+| NO_SIGNAL | 2440.000 | 72.0% | 5.270 | 20.8% | 18.1% | 0.172 | 0.181 |
+| SELL_SIGNAL_NEW | 315.000 | 9.3% | 1.000 | 0.6% | 52.7% | 0.391 | 0.161 |
+| SELL_SIGNAL_ACTIVE | 238.000 | 7.0% | 1.789 | 2.1% | 57.1% | 0.400 | 0.163 |
+| LONG_SIGNAL_NEW | 181.000 | 5.3% | 1.000 | 52.5% | 0.0% | 0.372 | 0.159 |
+| SIGNAL_INVALIDATED | 153.000 | 4.5% | 1.000 | 15.0% | 21.6% | 0.129 | 0.182 |
+| LONG_SIGNAL_ACTIVE | 61.000 | 1.8% | 1.245 | 54.1% | 1.6% | 0.379 | 0.164 |
 
 ## Signal Context Runs
 
 | signal_side | avg_context_run_length_days | context_run_count |
 | --- | --- | --- |
-| long | 1.302 | 159.000 |
-| sell | 1.889 | 307.000 |
+| long | 1.337 | 181.000 |
+| sell | 1.756 | 315.000 |
 
 ## Rule-State Mapping
 
 | signal_state | rule_state | row_count | share_within_signal_state |
 | --- | --- | --- | --- |
-| LONG_SIGNAL_ACTIVE | LONG_ELIGIBLE | 48 | 100.0% |
-| LONG_SIGNAL_NEW | LONG_ELIGIBLE | 159 | 100.0% |
-| NO_SIGNAL | AWAIT_CONFIRMATION | 1376 | 61.8% |
-| NO_SIGNAL | BLOCKED_BY_CONFLICT | 160 | 7.2% |
-| NO_SIGNAL | BLOCKED_NO_EDGE | 438 | 19.7% |
-| NO_SIGNAL | INVALIDATED | 251 | 11.3% |
-| SELL_SIGNAL_ACTIVE | SELL_ELIGIBLE | 273 | 100.0% |
-| SELL_SIGNAL_NEW | SELL_ELIGIBLE | 307 | 100.0% |
-| SIGNAL_INVALIDATED | INVALIDATED | 146 | 100.0% |
+| LONG_SIGNAL_ACTIVE | LONG_ELIGIBLE | 61 | 100.0% |
+| LONG_SIGNAL_NEW | LONG_ELIGIBLE | 181 | 100.0% |
+| NO_SIGNAL | AWAIT_CONFIRMATION | 1586 | 65.0% |
+| NO_SIGNAL | BLOCKED_BY_CONFLICT | 145 | 5.9% |
+| NO_SIGNAL | BLOCKED_NO_EDGE | 453 | 18.6% |
+| NO_SIGNAL | INVALIDATED | 256 | 10.5% |
+| SELL_SIGNAL_ACTIVE | SELL_ELIGIBLE | 238 | 100.0% |
+| SELL_SIGNAL_NEW | SELL_ELIGIBLE | 315 | 100.0% |
+| SIGNAL_INVALIDATED | INVALIDATED | 153 | 100.0% |
 
 ## Event Logic
 
@@ -56,13 +56,13 @@ The state machine emits `*_SIGNAL_NEW` only when an eligible context starts. Con
 
 ## Latest Signal State
 
-- Date: `2026-04-09`
-- Signal state: `SIGNAL_INVALIDATED`
-- Signal side: `sell`
+- Date: `2026-11-25`
+- Signal state: `NO_SIGNAL`
+- Signal side: `none`
 - Long event: `0`
 - Sell event: `0`
-- Invalidation event: `1`
-- Note: Previously active sell signal context is invalidated.
+- Invalidation event: `0`
+- Note: Rule layer is awaiting confirmation; no signal is realized.
 
 ## Interpretation
 

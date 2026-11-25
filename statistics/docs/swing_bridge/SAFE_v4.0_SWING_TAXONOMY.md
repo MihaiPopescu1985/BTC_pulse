@@ -11,16 +11,16 @@ Taxonomy method:
 
 ## Thresholds
 
-- size q33: `9.31%`
-- size q67: `16.25%`
+- size q33: `8.79%`
+- size q67: `15.89%`
 - duration q33: `3.0` days
 - duration q67: `7.0` days
 
 ## Counts
 
-- total swings: `550`
-- small / medium / large: `184` / `183` / `183`
-- short / medium / long: `198` / `211` / `141`
+- total swings: `591`
+- small / medium / large: `197` / `197` / `197`
+- short / medium / long: `215` / `226` / `150`
 
 Interpretation:
 - this taxonomy is market-defined from confirmed swings, not from arbitrary fixed thresholds

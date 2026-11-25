@@ -487,6 +487,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    horizons = sorted(set(int(x.strip()) for x in args.horizons.split(",") if x.strip()))
+    dataframe = read_input_table(args.input, args.input_fmt)
+
     if "date" in dataframe.columns:
         date_column = "date"
     elif "timestamp" in dataframe.columns:
@@ -502,12 +505,7 @@ def main() -> None:
         close="close",
     )
 
-    horizons = sorted(set(int(x.strip()) for x in args.horizons.split(",") if x.strip()))
-    dataframe = read_input_table(args.input, args.input_fmt)
-
     # Ensure time ordering
-    if columns.date not in dataframe.columns:
-        raise ValueError(f"Input table must contain '{columns.date}' for --input-fmt={args.input_fmt}.")
     dataframe = dataframe.sort_values(columns.date).reset_index(drop=True)
 
     out = compute_all_features_and_outcomes(

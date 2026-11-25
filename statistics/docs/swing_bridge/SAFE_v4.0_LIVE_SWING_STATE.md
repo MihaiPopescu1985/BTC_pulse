@@ -16,9 +16,9 @@ Fields:
 
 ## Latest Snapshot
 
-- date: `2026-04-09`
-- live_swing_direction: `up`
-- days_since_last_pivot: `11`
-- distance_from_last_pivot_pct: `10.69%`
-- distance_from_last_pivot_atr_units: `3.02`
-- last_confirmed_pivot_date: `2026-03-29`
+- date: `2026-11-25`
+- live_swing_direction: `down`
+- days_since_last_pivot: `2`
+- distance_from_last_pivot_pct: `-8.31%`
+- distance_from_last_pivot_atr_units: `-1.75`
+- last_confirmed_pivot_date: `2026-11-23`

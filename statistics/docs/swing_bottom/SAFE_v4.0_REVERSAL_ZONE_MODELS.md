@@ -24,75 +24,75 @@
 
 ## Chronological Split
 
-- train: `2210` rows, `2017-08-17` -> `2023-09-04`
-- validation: `474` rows, `2023-09-05` -> `2024-12-21`
-- test: `474` rows, `2024-12-22` -> `2026-04-09`
+- train: `2371` rows, `2017-08-17` -> `2024-02-12`
+- validation: `508` rows, `2024-02-13` -> `2025-07-04`
+- test: `509` rows, `2025-07-05` -> `2026-11-25`
 
 ## Buy Model Row Metrics
 
-- validation ROC AUC: `0.829`
-- validation PR AUC: `0.397`
-- validation Brier: `0.185`
-- validation Log loss: `0.543`
-- validation Precision / Recall / F1: `0.382` / `0.866` / `0.530`
-- test ROC AUC: `0.782`
-- test PR AUC: `0.470`
-- test Brier: `0.193`
-- test Log loss: `0.571`
-- test Precision / Recall / F1: `0.459` / `0.718` / `0.560`
+- validation ROC AUC: `0.805`
+- validation PR AUC: `0.373`
+- validation Brier: `0.203`
+- validation Log loss: `0.601`
+- validation Precision / Recall / F1: `0.351` / `0.813` / `0.490`
+- test ROC AUC: `0.717`
+- test PR AUC: `0.422`
+- test Brier: `0.238`
+- test Log loss: `0.705`
+- test Precision / Recall / F1: `0.427` / `0.680` / `0.525`
 
 ## Sell Model Row Metrics
 
-- validation ROC AUC: `0.719`
-- validation PR AUC: `0.435`
-- validation Brier: `0.368`
-- validation Log loss: `1.075`
-- validation Precision / Recall / F1: `0.315` / `0.919` / `0.469`
-- test ROC AUC: `0.799`
-- test PR AUC: `0.557`
-- test Brier: `0.477`
-- test Log loss: `1.583`
-- test Precision / Recall / F1: `0.320` / `1.000` / `0.485`
+- validation ROC AUC: `0.773`
+- validation PR AUC: `0.512`
+- validation Brier: `0.293`
+- validation Log loss: `0.830`
+- validation Precision / Recall / F1: `0.372` / `0.935` / `0.533`
+- test ROC AUC: `0.788`
+- test PR AUC: `0.570`
+- test Brier: `0.311`
+- test Log loss: `0.900`
+- test Precision / Recall / F1: `0.392` / `0.967` / `0.558`
 
 ## Top-Bucket Quality
 
-- buy test top 10% primary / strict hit rate: `0.479` / `0.333`
-- buy test top 10% avg distance to low: `0.068`
-- sell test top 10% primary / strict hit rate: `0.625` / `0.438`
-- sell test top 10% avg distance to high: `0.039`
+- buy test top 10% primary / strict hit rate: `0.431` / `0.275`
+- buy test top 10% avg distance to low: `0.121`
+- sell test top 10% primary / strict hit rate: `0.686` / `0.510`
+- sell test top 10% avg distance to high: `0.042`
 
 ## Swing-Level Capture
 
-- buy threshold swing count / captured / rate: `45.000` / `42.000` / `0.933`
-- buy top-decile captured / rate: `16.000` / `0.356`
+- buy threshold swing count / captured / rate: `47.000` / `44.000` / `0.936`
+- buy top-decile captured / rate: `12.000` / `0.255`
 - buy avg first-signal distance to low: `0.072`
-- sell threshold swing count / captured / rate: `44.000` / `44.000` / `1.000`
-- sell top-decile captured / rate: `13.000` / `0.295`
-- sell avg first-signal distance to high: `0.058`
+- sell threshold swing count / captured / rate: `48.000` / `48.000` / `1.000`
+- sell top-decile captured / rate: `17.000` / `0.354`
+- sell avg first-signal distance to high: `0.055`
 
 ## Most Important Coefficients
 
 ### Buy
 
-- `numeric__run_magnitude_up`: `-2.1824`
-- `numeric__ONCHAIN_DOMINANCE`: `-1.4605`
-- `numeric__r1`: `-1.3250`
-- `numeric__atr`: `1.1503`
-- `numeric__ONCHAIN_TX_MID`: `1.1317`
-- `numeric__HMM_DOM`: `1.0801`
-- `numeric__E_target_safe`: `-0.9544`
-- `numeric__atr_pct`: `-0.9513`
+- `numeric__run_magnitude_up`: `-2.4195`
+- `numeric__r1`: `-1.3139`
+- `numeric__ONCHAIN_DOMINANCE`: `-1.2929`
+- `numeric__atr`: `1.2157`
+- `numeric__atr_pct`: `-1.1847`
+- `numeric__conviction_safe`: `1.0782`
+- `categorical__HMM_LABEL_CORE`: `1.0039`
+- `numeric__ONCHAIN_TX_MID`: `0.9162`
 
 ### Sell
 
-- `numeric__r1`: `1.2762`
-- `numeric__band_w`: `1.0293`
-- `numeric__P_REBOUND_10D_CAL`: `-0.8767`
-- `numeric__return_accel`: `-0.7442`
-- `numeric__dist_from_mean_vol_units`: `-0.6745`
-- `numeric__ewma_vol`: `-0.6339`
-- `categorical__live_swing_direction_up`: `0.6158`
-- `categorical__live_swing_direction_unknown`: `-0.5571`
+- `numeric__r1`: `1.0980`
+- `numeric__band_w`: `0.8055`
+- `numeric__P_REBOUND_10D_CAL`: `-0.6945`
+- `categorical__live_swing_direction_up`: `0.6653`
+- `numeric__return_accel`: `-0.6566`
+- `numeric__downside_semi_vol`: `0.6293`
+- `categorical__live_swing_direction_unknown`: `-0.5947`
+- `categorical__HMM_LABEL_CORE`: `-0.5856`
 
 ## Interpretation
 

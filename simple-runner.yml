@@ -32,21 +32,6 @@ buttons:
     cwd: crawler
     script: make clean
 
-  - id: echarts-ui-setup
-    label: EChartsUI - run setup
-    cwd: echarts-ui
-    script: npm install && npm run dev
-
-  - id: echarts-ui-run
-    label: EChartsUI - run preview
-    cwd: echarts-ui
-    script: npm run build && npm run preview
-
-  - id: echarts-ui-test
-    label: EChartsUI - run tests
-    cwd: echarts-ui
-    script: npm test
-
   - id: frontend-setup
     label: Frontend - run setup
     cwd: frontend
@@ -55,10 +40,24 @@ buttons:
       gem install jekyll bundler
       bundle install
     
+  - id: frontend-sync
+    label: Frontend - synchronize chart data
+    cwd: .
+    script: |
+      #!/bin/bash
+      # frontend/_data is a committed copy; query.py writes only into
+      # statistics/data, so without this the charts keep serving the old copy.
+      .venv/bin/python frontend/sync_data.py
+
   - id: frontent-serve
     label: Frontend - serve
     cwd: frontend
-    script: bundle exec jekyll serve
+    script: |
+      #!/bin/bash
+      # Refresh the copied data first, so serving can never show a stale chart.
+      ../.venv/bin/python sync_data.py || exit 1
+
+      bundle exec jekyll serve
 
   - id: statistics-sync
     label: Statistics - synchronize data
@@ -79,7 +78,7 @@ buttons:
     script: |
       #!/bin/bash
       # Remove the old generated file to start clean
-      rm out/daily_reading.txt
+      rm -f out/daily_reading.txt
      
       # Clean the console
       echo "Press ENTER to continue."
@@ -88,14 +87,14 @@ buttons:
       # Get the start date
       while true; do
           read -r -p "Enter start date (yyyy-MM-DD): " start
-          [[ $start =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          [[ $start =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] && break
           echo "Only digits allowed."
       done
 
       # Get the stop date
       while true; do
           read -r -p "Enter end date (yyyy-MM-DD): " end
-          [[ $end =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          [[ $end =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] && break
           echo "Only digits allowed."
       done
 
@@ -113,17 +112,51 @@ buttons:
 
       python src/util/safe_touch_probabilities.py --date $end >> out/daily_reading.txt
 
-      python src/safe_interpreter.py
-
-      python src/safe_interpreter_v2.py
-
   - id: statistics-features-viewer
     label: Statistics - features viewer
     cwd: statistics
     script: |
       #!/bin/bash
-      firefox http://localhost:8000/viewer/dashboard.html
-      python -m http.server
+      # Serve statistics/ as the document root: viewer/dashboard.html fetches
+      # ../out/features.csv and ../data/*.json by relative path.
+      source ../.venv/bin/activate
+
+      url=http://127.0.0.1:8000/viewer/dashboard.html
+
+      python -m http.server 8000 --bind 127.0.0.1 &
+      server=$!
+      trap 'kill $server 2>/dev/null' EXIT
+
+      # Fail loudly if the port was already taken. Otherwise the wait loop below
+      # would succeed against whatever else is serving there, the browser would
+      # show that instead, and this script would exit immediately.
+      sleep 1
+      if ! kill -0 "$server" 2>/dev/null; then
+          echo "Could not bind port 8000 - another server is probably still running." >&2
+          exit 1
+      fi
+
+      # Wait for the port to accept connections before opening the browser,
+      # otherwise the page is requested while nothing is listening yet.
+      for _ in $(seq 1 40); do
+          curl -sf -o /dev/null "$url" && break
+          sleep 0.25
+      done
+
+      firefox "$url" &
+
+      echo "Serving statistics/ at $url - press Ctrl+C to stop."
+      wait $server
+
+  - id: statistics-safe-dashboard
+    label: Statistics - SAFE signal dashboard
+    cwd: statistics
+    script: |
+      #!/bin/bash
+      # The eight registered signal views, date-aligned against daily_price.json.
+      # Binds the port before opening the browser, so no wait loop is needed.
+      source ../.venv/bin/activate
+      python src/dashboard/run_dashboard.py --open-browser
 
   - id: strategies-candles
     label: Strategies - candles similarities
@@ -136,26 +169,27 @@ buttons:
       # Get the start date
       while true; do
           read -r -p "Enter start date (yyyy-MM-DD): " start
-          [[ $start =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          [[ $start =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] && break
           echo "Only digits allowed."
       done
 
       # Get the stop date
       while true; do
           read -r -p "Enter end date (yyyy-MM-DD): " end
-          [[ $end =~ ^[0-9]{4}-0[0-9]|1[0-2]-[0-3][0-9]$ ]] && break
+          [[ $end =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]] && break
           echo "Only digits allowed."
       done
 
       source ../.venv/bin/activate
 
       python candles_btc_features.py \
-        --input ../frontend/_data/daily_price.json \
+        --input ../statistics/out/features.csv \
+        --input-fmt csv \
         --output out.csv
 
       python candlestick_research_tool_v4.py \
         --input out.csv \
-        --key-col timestamp \
+        --key-col date \
         --start $start \
         --end $end \
         --standardize \

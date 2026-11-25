@@ -22,26 +22,26 @@ This layer translates the promoted playbook into operational structural states: 
 
 | operational_state | row_count | row_share | avg_run_length_days | buy_zone_5_rate | sell_zone_5_rate | avg_clarity | avg_conflict |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| WAIT_CONFIRMATION | 1376.000 | 43.6% | 1.957 | 24.9% | 19.3% | 0.211 | 0.194 |
-| SELL_CONTEXT_ACTIVE | 601.000 | 19.0% | 1.902 | 2.5% | 51.7% | 0.412 | 0.161 |
-| STAND_ASIDE_NO_EDGE | 438.000 | 13.9% | 2.355 | 2.5% | 10.3% | 0.098 | 0.099 |
-| CONTEXT_INVALIDATED | 355.000 | 11.2% | 1.000 | 12.4% | 17.2% | 0.105 | 0.178 |
-| LONG_CONTEXT_ACTIVE | 228.000 | 7.2% | 1.288 | 50.4% | 0.9% | 0.370 | 0.156 |
-| STAND_ASIDE_CONFLICT | 160.000 | 5.1% | 1.468 | 40.6% | 11.9% | 0.093 | 0.329 |
+| WAIT_CONFIRMATION | 1586.000 | 46.8% | 2.126 | 25.3% | 19.7% | 0.207 | 0.195 |
+| SELL_CONTEXT_ACTIVE | 581.000 | 17.1% | 1.793 | 1.2% | 54.6% | 0.395 | 0.161 |
+| STAND_ASIDE_NO_EDGE | 453.000 | 13.4% | 2.618 | 2.2% | 9.7% | 0.098 | 0.098 |
+| CONTEXT_INVALIDATED | 359.000 | 10.6% | 1.000 | 13.1% | 21.2% | 0.099 | 0.173 |
+| LONG_CONTEXT_ACTIVE | 264.000 | 7.8% | 1.327 | 52.7% | 0.4% | 0.373 | 0.159 |
+| STAND_ASIDE_CONFLICT | 145.000 | 4.3% | 1.381 | 42.1% | 18.6% | 0.079 | 0.312 |
 
 ## Playbook Mapping
 
 | operational_state | playbook_label | row_count | share_within_state |
 | --- | --- | --- | --- |
-| CONTEXT_INVALIDATED | HIGH_CONFLICT | 103 | 29.0% |
-| CONTEXT_INVALIDATED | NO_ACTION | 252 | 71.0% |
-| LONG_CONTEXT_ACTIVE | ACCUMULATION_WATCH | 228 | 100.0% |
-| SELL_CONTEXT_ACTIVE | DISTRIBUTION_WATCH | 601 | 100.0% |
-| STAND_ASIDE_CONFLICT | HIGH_CONFLICT | 160 | 100.0% |
-| STAND_ASIDE_NO_EDGE | NO_ACTION | 438 | 100.0% |
-| WAIT_CONFIRMATION | ACCUMULATION_WATCH | 88 | 6.4% |
-| WAIT_CONFIRMATION | DISTRIBUTION_WATCH | 34 | 2.5% |
-| WAIT_CONFIRMATION | TRANSITION_WATCH | 1254 | 91.1% |
+| CONTEXT_INVALIDATED | HIGH_CONFLICT | 98 | 27.3% |
+| CONTEXT_INVALIDATED | NO_ACTION | 261 | 72.7% |
+| LONG_CONTEXT_ACTIVE | ACCUMULATION_WATCH | 264 | 100.0% |
+| SELL_CONTEXT_ACTIVE | DISTRIBUTION_WATCH | 581 | 100.0% |
+| STAND_ASIDE_CONFLICT | HIGH_CONFLICT | 145 | 100.0% |
+| STAND_ASIDE_NO_EDGE | NO_ACTION | 453 | 100.0% |
+| WAIT_CONFIRMATION | ACCUMULATION_WATCH | 103 | 6.5% |
+| WAIT_CONFIRMATION | DISTRIBUTION_WATCH | 57 | 3.6% |
+| WAIT_CONFIRMATION | TRANSITION_WATCH | 1426 | 89.9% |
 
 ## Transition Logic
 
@@ -49,10 +49,10 @@ The layer is intentionally state-machine-like. Favorable playbook states move in
 
 ## Latest State
 
-- Date: `2026-04-09`
-- Operational state: `CONTEXT_INVALIDATED`
-- Operational bias: `mixed`
-- Note: Previously favorable context is invalidated by high conflict.
+- Date: `2026-11-25`
+- Operational state: `WAIT_CONFIRMATION`
+- Operational bias: `long_lean`
+- Note: Structure is forming but not confirmed; defer directional interpretation.
 
 ## Interpretation
 
