@@ -10,33 +10,33 @@ Method:
 
 ## Summary
 
-- swings extracted: `549`
-- up swings: `274`
-- down swings: `275`
-- median absolute amplitude: `12.23%`
+- swings extracted: `590`
+- up swings: `295`
+- down swings: `295`
+- median absolute amplitude: `11.69%`
 - median duration: `4` days
-- amplitude-duration Spearman: `0.429`
+- amplitude-duration Spearman: `0.428`
 
 ## Amplitude Distribution
 
-- `0-5%`: `27`
-- `5-10%`: `176`
-- `10-20%`: `214`
-- `20-30%`: `76`
-- `30%+`: `56`
+- `0-5%`: `38`
+- `5-10%`: `196`
+- `10-20%`: `220`
+- `20-30%`: `79`
+- `30%+`: `57`
 
 ## Duration Distribution
 
-- `0-6d`: `372`
-- `7-13d`: `139`
-- `14-29d`: `36`
-- `30-59d`: `2`
+- `0-6d`: `399`
+- `7-13d`: `150`
+- `14-29d`: `38`
+- `30-59d`: `3`
 - `60d+`: `0`
 
 ## Joint Stats
 
-- up-swing median amplitude: `13.60%`
-- down-swing median amplitude: `-10.88%`
+- up-swing median amplitude: `12.95%`
+- down-swing median amplitude: `-10.64%`
 - up-swing median duration: `5` days
 - down-swing median duration: `4` days
 

@@ -15,8 +15,8 @@
 ## Threshold Calibration
 
 - thresholds are calibrated from train+validation rows only
-- buy high / moderate: `0.580` / `0.424`
-- sell high / moderate: `0.639` / `0.536`
+- buy high / moderate: `0.576` / `0.427`
+- sell high / moderate: `0.637` / `0.530`
 - directional spread minimum: `0.100`
 
 ## State Definitions
@@ -39,24 +39,24 @@
 
 ## State Prevalence And Quality
 
-- `BUY_SETUP`: share `0.184`, avg run `1.95` days, buy-zone 5% `0.526`, sell-zone 5% `0.040`, clarity `0.279`
-- `SELL_SETUP`: share `0.237`, avg run `2.32` days, buy-zone 5% `0.044`, sell-zone 5% `0.487`, clarity `0.387`
-- `CONFLICT_OVERLAP`: share `0.083`, avg run `1.51` days, buy-zone 5% `0.373`, sell-zone 5% `0.137`, clarity `0.096`
-- `TRANSITION_UNCLEAR`: share `0.277`, avg run `1.55` days, buy-zone 5% `0.154`, sell-zone 5% `0.218`, clarity `0.195`
-- `NEUTRAL_NO_EDGE`: share `0.218`, avg run `2.04` days, buy-zone 5% `0.032`, sell-zone 5% `0.129`, clarity `0.101`
+- `BUY_SETUP`: share `0.205`, avg run `2.05` days, buy-zone 5% `0.506`, sell-zone 5% `0.038`, clarity `0.281`
+- `SELL_SETUP`: share `0.219`, avg run `2.21` days, buy-zone 5% `0.038`, sell-zone 5% `0.519`, clarity `0.369`
+- `CONFLICT_OVERLAP`: share `0.072`, avg run `1.39` days, buy-zone 5% `0.383`, sell-zone 5% `0.218`, clarity `0.083`
+- `TRANSITION_UNCLEAR`: share `0.294`, avg run `1.63` days, buy-zone 5% `0.170`, sell-zone 5% `0.220`, clarity `0.188`
+- `NEUTRAL_NO_EDGE`: share `0.211`, avg run `2.11` days, buy-zone 5% `0.035`, sell-zone 5% `0.132`, clarity `0.100`
 
 ## Separation Readout
 
-- `BUY_SETUP` buy-zone 5% rate: `0.526` vs `NEUTRAL_NO_EDGE` `0.032`
-- `SELL_SETUP` sell-zone 5% rate: `0.487` vs `NEUTRAL_NO_EDGE` `0.129`
+- `BUY_SETUP` buy-zone 5% rate: `0.506` vs `NEUTRAL_NO_EDGE` `0.035`
+- `SELL_SETUP` sell-zone 5% rate: `0.519` vs `NEUTRAL_NO_EDGE` `0.132`
 - separation should be read structurally: states are intended to clarify timing context, not prove a tradable rule
 
 ## Conflict Analysis
 
-- conflict rows: `263`
-- conflict live-swing direction mix: `up` `0.570`, `down` `0.430`
-- conflict avg buy score: `0.522`
-- conflict avg sell score: `0.621`
+- conflict rows: `243`
+- conflict live-swing direction mix: `up` `0.626`, `down` `0.374`
+- conflict avg buy score: `0.513`
+- conflict avg sell score: `0.596`
 - conflict/overlap should be treated as a mixed timing state, not as a buy or sell trigger
 
 ## Interpretation

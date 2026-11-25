@@ -8,10 +8,10 @@
 
 ## Dataset Summary
 
-- rows: `3158`
-- date range: `2017-08-17` -> `2026-04-09`
-- rows in confirmed down swings: `1442`
-- rows in confirmed up swings: `1696`
+- rows: `3388`
+- date range: `2017-08-17` -> `2026-11-25`
+- rows in confirmed down swings: `1566`
+- rows in confirmed up swings: `1811`
 
 ## Label Families
 
@@ -33,26 +33,26 @@
 
 ### Range-Based
 
-- `buy_zone_bottom_10pct_of_range`: `1.36%`
-- `buy_zone_bottom_5pct_of_range`: `0.28%`
-- `sell_zone_top_10pct_of_range`: `3.26%`
-- `sell_zone_top_5pct_of_range`: `1.01%`
+- `buy_zone_bottom_10pct_of_range`: `1.33%`
+- `buy_zone_bottom_5pct_of_range`: `0.30%`
+- `sell_zone_top_10pct_of_range`: `3.22%`
+- `sell_zone_top_5pct_of_range`: `0.94%`
 
 ### Price-Distance
 
-- `buy_zone_within_5pct_above_low`: `18.78%`
-- `buy_zone_within_3pct_above_low`: `10.77%`
-- `sell_zone_within_5pct_below_high`: `22.29%`
-- `sell_zone_within_3pct_below_high`: `13.11%`
+- `buy_zone_within_5pct_above_low`: `19.66%`
+- `buy_zone_within_3pct_above_low`: `11.33%`
+- `sell_zone_within_5pct_below_high`: `22.93%`
+- `sell_zone_within_3pct_below_high`: `13.55%`
 
 ## Swing Coverage Sanity
 
-- confirmed down swings: `275`
-- confirmed up swings: `275`
+- confirmed down swings: `295`
+- confirmed up swings: `296`
 - median down-swing duration: `4.0` days
 - median up-swing duration: `5.0` days
-- median down-swing amplitude: `10.83%`
-- median up-swing amplitude: `13.50%`
+- median down-swing amplitude: `10.34%`
+- median up-swing amplitude: `12.84%`
 
 ## Zone Width Read
 

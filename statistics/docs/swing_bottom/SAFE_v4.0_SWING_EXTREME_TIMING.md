@@ -42,44 +42,44 @@
 
 ## Learned Combiner Coefficients
 
-- `buy_full`: `buy_phase_prob` `1.880`, `buy_analog_prob` `-0.046`, `buy_exhaustion_score` `0.002`
-- `sell_full`: `sell_phase_prob` `1.151`, `sell_analog_prob` `0.271`, `sell_exhaustion_score` `0.132`
+- `buy_full`: `buy_phase_prob` `1.789`, `buy_analog_prob` `0.067`, `buy_exhaustion_score` `0.026`
+- `sell_full`: `sell_phase_prob` `1.207`, `sell_analog_prob` `0.280`, `sell_exhaustion_score` `0.113`
 
 ## Evaluation Summary
 
-- buy unconditional 5% zone prevalence on test: `0.247`
-- buy learned-full top 10% zone 5% / 3% hit rate: `0.458` / `0.312`
-- buy fixed-weight top 10% zone 5% / 3% hit rate: `0.562` / `0.438`
-- buy phase-only top 10% zone 5% / 3% hit rate: `0.479` / `0.333`
-- sell unconditional 5% zone prevalence on test: `0.287`
-- sell learned-full top 10% zone 5% / 3% hit rate: `0.792` / `0.542`
-- sell fixed-weight top 10% zone 5% / 3% hit rate: `0.812` / `0.521`
-- sell phase-only top 10% zone 5% / 3% hit rate: `0.625` / `0.438`
+- buy unconditional 5% zone prevalence on test: `0.289`
+- buy learned-full top 10% zone 5% / 3% hit rate: `0.471` / `0.314`
+- buy fixed-weight top 10% zone 5% / 3% hit rate: `0.490` / `0.353`
+- buy phase-only top 10% zone 5% / 3% hit rate: `0.431` / `0.275`
+- sell unconditional 5% zone prevalence on test: `0.299`
+- sell learned-full top 10% zone 5% / 3% hit rate: `0.765` / `0.608`
+- sell fixed-weight top 10% zone 5% / 3% hit rate: `0.725` / `0.529`
+- sell phase-only top 10% zone 5% / 3% hit rate: `0.686` / `0.510`
 
 ## Swing-Level Summary
 
-- buy test down swings: `45`
-- buy learned-full best-row avg / median distance: `0.049` / `0.028`
-- buy learned-full best-row within 5% / 3%: `0.733` / `0.556`
-- buy fixed-weight best-row within 5% / 3%: `0.733` / `0.578`
-- sell test up swings: `44`
-- sell learned-full best-row avg / median distance: `0.027` / `0.020`
-- sell learned-full best-row within 5% / 3%: `0.909` / `0.727`
-- sell fixed-weight best-row within 5% / 3%: `0.932` / `0.750`
+- buy test down swings: `47`
+- buy learned-full best-row avg / median distance: `0.045` / `0.023`
+- buy learned-full best-row within 5% / 3%: `0.787` / `0.638`
+- buy fixed-weight best-row within 5% / 3%: `0.830` / `0.681`
+- sell test up swings: `48`
+- sell learned-full best-row avg / median distance: `0.030` / `0.017`
+- sell learned-full best-row within 5% / 3%: `0.875` / `0.792`
+- sell fixed-weight best-row within 5% / 3%: `0.958` / `0.854`
 
 ## Coverage Thresholds
 
-- buy `learned_full` threshold `0.70`: coverage `0.800`, within 5% / 3% `0.589` / `0.421`, avg distance `0.062`, rows `107`
-- buy `learned_full` threshold `0.80`: coverage `0.733`, within 5% / 3% `0.565` / `0.435`, avg distance `0.065`, rows `69`
-- sell `learned_full` threshold `0.70`: coverage `1.000`, within 5% / 3% `0.604` / `0.359`, avg distance `0.051`, rows `217`
-- sell `learned_full` threshold `0.80`: coverage `0.932`, within 5% / 3% `0.617` / `0.383`, avg distance `0.049`, rows `193`
+- buy `learned_full` threshold `0.70`: coverage `0.872`, within 5% / 3% `0.518` / `0.362`, avg distance `0.112`, rows `141`
+- buy `learned_full` threshold `0.80`: coverage `0.787`, within 5% / 3% `0.514` / `0.360`, avg distance `0.109`, rows `111`
+- sell `learned_full` threshold `0.70`: coverage `1.000`, within 5% / 3% `0.642` / `0.463`, avg distance `0.047`, rows `190`
+- sell `learned_full` threshold `0.80`: coverage `0.979`, within 5% / 3% `0.678` / `0.514`, avg distance `0.043`, rows `146`
 
 ## Ablation Readout
 
-- buy phase+analog best-row within 5% / 3%: `0.733` / `0.556`
-- buy phase+exhaustion best-row within 5% / 3%: `0.733` / `0.556`
-- sell phase+analog best-row within 5% / 3%: `0.864` / `0.682`
-- sell phase+exhaustion best-row within 5% / 3%: `0.932` / `0.750`
+- buy phase+analog best-row within 5% / 3%: `0.787` / `0.638`
+- buy phase+exhaustion best-row within 5% / 3%: `0.787` / `0.660`
+- sell phase+analog best-row within 5% / 3%: `0.833` / `0.729`
+- sell phase+exhaustion best-row within 5% / 3%: `0.854` / `0.750`
 
 ## Interpretation
 

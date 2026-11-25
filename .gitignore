@@ -67,3 +67,11 @@ statistics/models
 # strategies
 strategies/research_out*
 strategies/out.csv
+
+# extension (VS Code "Simple Runner")
+## Dependencies
+extension/node_modules/
+## Build output: package.json points main at out/extension.js, so this must be
+## rebuilt with `npm install && npm run compile` after a fresh clone.
+extension/out/
+extension/*.tsbuildinfo
