@@ -5,6 +5,7 @@ import json
 import subprocess
 import os
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -28,6 +29,12 @@ BTC_QUERY_CONFIG = DATABASE_FOLDER / ".btc_query_config"
 # Blocks closer than this to the tip are left out of the main chain: two competing
 # blocks at the tip are only settled once more blocks are built on top of them.
 MIN_CONFIRMATIONS = 6
+# Thermal guard for the database SSD (composite temperature, the value the drive
+# itself uses; this drive warns at 75 °C and is critical at 80 °C). Long runs
+# pause between files at THERMAL_PAUSE_AT and continue below THERMAL_RESUME_AT.
+THERMAL_PAUSE_AT = 68
+THERMAL_RESUME_AT = 55
+THERMAL_POLL_SECONDS = 30
 DEFAULT_DAY_PARSE_CONFIG = {
             "last_day_amount_db_parse": str(DATABASE_FOLDER / "blk00000.db"),
             "last_day_amount_datetime_parse": 1231006505,
@@ -52,6 +59,63 @@ def utc_from_timestamp(timestamp) -> datetime:
 def parse_utc(text: str) -> datetime:
     """A DATE_FORMAT string, read as UTC (never as the machine's local time)."""
     return datetime.strptime(text, DATE_FORMAT).replace(tzinfo=timezone.utc)
+
+def _nvme_hwmon_dir(path, sys_root="/sys"):
+    """hwmon directory of the NVMe drive holding `path`, or None if not found.
+
+    Follows /sys/dev/block/<major>:<minor> of the filesystem up through its
+    parent devices until one has an hwmon whose name is "nvme" (kernels put it
+    on the controller or on its PCI device).
+    """
+    dev = os.stat(path).st_dev
+    block = os.path.join(sys_root, "dev", "block", f"{os.major(dev)}:{os.minor(dev)}")
+    if not os.path.exists(block):
+        return None
+    current = os.path.realpath(block)
+    root = os.path.realpath(sys_root)
+    while current.startswith(root) and current != root:
+        for hwmon in sorted(Path(current).glob("hwmon*/hwmon*")) + sorted(Path(current).glob("hwmon*")):
+            name = hwmon / "name"
+            if name.is_file() and name.read_text().strip() == "nvme" and (hwmon / "temp1_input").is_file():
+                return hwmon
+        current = os.path.dirname(current)
+    return None
+
+_SSD_HWMON = None
+_SSD_HWMON_SEARCHED = False
+
+def read_ssd_temperature():
+    """Composite temperature (°C) of the database SSD, or None if unavailable."""
+    global _SSD_HWMON, _SSD_HWMON_SEARCHED
+    if not _SSD_HWMON_SEARCHED:
+        _SSD_HWMON_SEARCHED = True
+        try:
+            _SSD_HWMON = _nvme_hwmon_dir(DATABASE_FOLDER)
+        except OSError:
+            _SSD_HWMON = None
+        if _SSD_HWMON is None:
+            print(f"Warning: no NVMe temperature sensor found for {DATABASE_FOLDER}; "
+                  "thermal guard disabled.")
+    if _SSD_HWMON is None:
+        return None
+    try:
+        return int((_SSD_HWMON / "temp1_input").read_text()) / 1000
+    except (OSError, ValueError):
+        return None
+
+def thermal_guard(verbose=True):
+    """Wait while the database SSD is too hot. Call between files of a long run."""
+    temperature = read_ssd_temperature()
+    if temperature is None or temperature < THERMAL_PAUSE_AT:
+        return
+    print(f"{datetime.now():%H:%M:%S} SSD at {temperature:.0f} °C, pausing until it is "
+          f"below {THERMAL_RESUME_AT} °C...", flush=True)
+    while temperature is not None and temperature >= THERMAL_RESUME_AT:
+        time.sleep(THERMAL_POLL_SECONDS)
+        temperature = read_ssd_temperature()
+        if verbose:
+            print(f"{datetime.now():%H:%M:%S}   {temperature:.0f} °C", flush=True)
+    print(f"{datetime.now():%H:%M:%S} SSD at {temperature:.0f} °C, continuing.", flush=True)
 
 def load_config() -> dict:
     """Read the query config, creating it with the defaults if it does not exist."""
@@ -118,87 +182,99 @@ def _build_tx_size_query() -> str:
     """
 
 def get_day_btc_amount(database="blk*.db", verbose=True):
-    """Update the btc_amount database with data collected from the other databases.
+    """Update btc_amounts.db with the daily output totals of every per-file database.
+
+    Safe to interrupt and re-run at any point: each per-file database's daily
+    totals are stored separately (table db_days) and replaced, never added, when
+    that database is processed again; the progress record is written in the same
+    transaction. A database is (re)processed when its number of main-chain blocks
+    changed since last time, so new blocks, newly confirmed blocks and blocks that
+    left the main chain are all picked up. The `days` view sums db_days per day.
 
     Args:
-        database: The sqlite database to traverse.
+        database: Glob pattern of the per-file databases to traverse.
     """
-
-    dbs = sorted(DATABASE_FOLDER.rglob(database))
-    config = load_config()
     ensure_amount_db()
 
-    last_time = None
-    last_path = Path(config['last_day_amount_db_parse'])
-    if last_path in dbs:
-        index = dbs.index(last_path)
-        dbs = dbs[index:]
-        last_time = config['last_day_amount_datetime_parse']
+    chain = sqlite3.connect(f"file:{CHAIN_DB}?mode=ro&immutable=1", uri=True)
+    main_blocks = dict(chain.execute("SELECT db_file, count(*) FROM main_chain GROUP BY db_file;"))
+    chain.close()
 
-    for in_db in dbs:
-        if verbose:
-            print(f"Handling {in_db}")
+    os.chmod(BTC_AMOUNT_DB, 0o666)
+    out = sqlite3.connect(str(BTC_AMOUNT_DB))
+    try:
+        done = dict(out.execute("SELECT db_file, main_blocks FROM db_progress;"))
 
-        # Only main-chain blocks: the time pointer must not move past blocks that
-        # are not counted yet (e.g. ones still too close to the tip).
-        conn = connect_readonly(in_db)
-        db_min_time, max_time = conn.execute(
-            f"SELECT min(b.time), max(b.time) FROM block AS b {MAIN_CHAIN_JOIN};",
-            {"db_file": in_db.name},
-        ).fetchone()
-        conn.close()
-        if max_time is None:
-            continue  # no main-chain blocks in this database (yet)
+        for in_db in sorted(DATABASE_FOLDER.rglob(database)):
+            blocks = main_blocks.get(in_db.name, 0)
+            if done.get(in_db.name) == blocks:
+                continue  # unchanged since it was last processed
 
-        if last_time:
-            min_time = int(last_time)
-            last_time = 0
-        else:
-            min_time = db_min_time
-
-        min_date = utc_from_timestamp(min_time)
-        max_date = utc_from_timestamp(max_time)
-
-        amounts = get_btc_amount(
-            in_db,
-            datetime.strftime(min_date, DATE_FORMAT),
-            datetime.strftime(max_date, DATE_FORMAT),
-            'day'
-        )
-        os.chmod(BTC_AMOUNT_DB, 0o666)
-        conn = sqlite3.connect(str(BTC_AMOUNT_DB))
-        cursor = conn.cursor()
-
-        command = """
-            INSERT INTO days (date, amount) 
-            VALUES (?, ?) 
-            ON CONFLICT(date) 
-            DO UPDATE SET amount = amount + ?;
-        """
-
-        for date, amount in amounts.items():
-            config["last_day_amount_db_parse"] = str(in_db)
-            config["last_day_amount_datetime_parse"] = max_time+1
-
-            date = datetime.strptime(date, DATE_FORMAT).date()
-
+            thermal_guard(verbose)
             if verbose:
-                print(f"Upserting {date}, {amount} into days.")
-            cursor.execute(command, (date.isoformat(), amount, amount))
+                print(f"Handling {in_db} ({blocks} main-chain blocks)")
 
-        conn.commit()
-        conn.close()
+            conn = connect_readonly(in_db)
+            rows = conn.execute(f"""
+                SELECT date(b.time, 'unixepoch') AS day, SUM(o.amount)
+                FROM out AS o JOIN tx AS t ON o.tx_hash = t.hash
+                JOIN block AS b ON t.block_hash = b.hash
+                {MAIN_CHAIN_JOIN}
+                GROUP BY day;
+            """, {"db_file": in_db.name}).fetchall()
+            conn.close()
 
+            # One transaction per database: its old rows out, new rows and the
+            # progress record in. An interruption leaves either all or nothing.
+            with out:
+                out.execute("DELETE FROM db_days WHERE db_file = ?;", (in_db.name,))
+                out.executemany(
+                    "INSERT INTO db_days (db_file, date, amount) VALUES (?, ?, ?);",
+                    [(in_db.name, day, amount) for day, amount in rows],
+                )
+                out.execute(
+                    "INSERT OR REPLACE INTO db_progress (db_file, main_blocks) VALUES (?, ?);",
+                    (in_db.name, blocks),
+                )
+    finally:
+        out.close()
         os.chmod(BTC_AMOUNT_DB, 0o444)
-        save_config(config)
 
 def ensure_amount_db():
-    """Create btc_amounts.db with its days table if it does not exist yet."""
+    """Create btc_amounts.db if it does not exist yet.
+
+    db_days:     daily output totals (satoshi) per per-file database
+    db_progress: main-chain block count of each database when it was processed
+    days:        view with the daily totals in BTC, used by export_days_amount
+    """
     if BTC_AMOUNT_DB.exists():
+        conn = sqlite3.connect(f"file:{BTC_AMOUNT_DB}?mode=ro", uri=True)
+        old = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'days';"
+        ).fetchone()
+        conn.close()
+        if old:
+            raise RuntimeError(
+                f"{BTC_AMOUNT_DB} has the old format (a 'days' table). "
+                "Delete it and run get_day_btc_amount() again to rebuild it."
+            )
         return
     conn = sqlite3.connect(str(BTC_AMOUNT_DB))
-    conn.execute("CREATE TABLE IF NOT EXISTS days (date TEXT PRIMARY KEY, amount REAL);")
-    conn.commit()
+    conn.executescript("""
+        CREATE TABLE db_days (
+            db_file TEXT NOT NULL,
+            date TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            PRIMARY KEY (db_file, date)
+        );
+        CREATE TABLE db_progress (
+            db_file TEXT PRIMARY KEY,
+            main_blocks INTEGER NOT NULL
+        );
+        CREATE VIEW days AS
+            SELECT date, SUM(amount) / 100000000.0 AS amount
+            FROM db_days GROUP BY date ORDER BY date;
+    """)
     conn.close()
     os.chmod(BTC_AMOUNT_DB, 0o444)
 
@@ -261,6 +337,16 @@ def round_datetime(date: datetime, interval: str, direction: str):
 
     return round_date_time
 
+# Start of the period containing b.time, in DATE_FORMAT, UTC (SQLite's
+# 'unixepoch' is UTC). Weeks start on Monday.
+_PERIOD_SQL = {
+    'hour': "strftime('%d-%m-%Y %H:00:00', b.time, 'unixepoch')",
+    'day': "strftime('%d-%m-%Y 00:00:00', b.time, 'unixepoch')",
+    'week': "strftime('%d-%m-%Y 00:00:00', b.time, 'unixepoch', '-6 days', 'weekday 1')",
+    'month': "strftime('01-%m-%Y 00:00:00', b.time, 'unixepoch')",
+    'year': "strftime('01-01-%Y 00:00:00', b.time, 'unixepoch')",
+}
+
 def get_btc_amount(database: str, start: str, end: str, interval='day'):
 
     # Validate parameters
@@ -276,45 +362,26 @@ def get_btc_amount(database: str, start: str, end: str, interval='day'):
     except ValueError as e:
         raise ValueError(f"Date format error: {e}")
 
-    # Query the database
+    # Each output goes to the period that contains its block's timestamp, computed
+    # by SQLite in UTC. Unlike a running "end of the current day" over the rows,
+    # this does not depend on row order: blocks are stored in download order and
+    # block timestamps are not monotonic.
     conn = connect_readonly(database)
-    cursor = conn.cursor()
-
     command = f"""
-        SELECT b.time, o.amount
+        SELECT {_PERIOD_SQL[interval]} AS period, SUM(o.amount)
         FROM out AS o JOIN tx AS t ON o.tx_hash = t.hash
         JOIN block AS b ON t.block_hash = b.hash
         {MAIN_CHAIN_JOIN}
-        WHERE b.time >= :start AND b.time <= :end;
+        WHERE b.time >= :start AND b.time <= :end
+        GROUP BY period;
     """
-    cursor.execute(command, {"db_file": Path(database).name, "start": start_date, "end": end_date})
-
-    out = {}
-    amount_sum = 0
-    high_end = round_datetime(parse_utc(start), interval, 'up')
-    high_end = int(high_end.timestamp())
-
-    for row in cursor:
-        current_datetime = int(row[0])
-
-        if current_datetime < high_end:
-            amount_sum += row[1]
-        else:
-            key = round_datetime(utc_from_timestamp(high_end), interval, 'down')
-            key = key.strftime(DATE_FORMAT)
-            out[key] = amount_sum / 100000000
-            amount_sum = row[1]
-
-            while high_end < current_datetime:
-                high_end = round_datetime(utc_from_timestamp(high_end), interval, 'up')
-                high_end = high_end.timestamp()
-
-    key = round_datetime(utc_from_timestamp(high_end), interval, 'down')
-    key = key.strftime(DATE_FORMAT)
-    out[key] = amount_sum / 100000000
-
+    rows = conn.execute(
+        command, {"db_file": Path(database).name, "start": start_date, "end": end_date}
+    ).fetchall()
     conn.close()
-    return out
+
+    # Keys: start of each period in DATE_FORMAT (UTC); values in BTC.
+    return {period: total / 100000000 for period, total in rows}
 
 def parse_dat_file(dat_file="blk*.dat", verbose=True):
     """
@@ -336,6 +403,7 @@ def parse_dat_file(dat_file="blk*.dat", verbose=True):
 
     # Start parsing the dat files
     for file in dat_files:
+        thermal_guard(verbose)
         if verbose:
             now = datetime.now()
             print(f"{now} parsing {file}")
